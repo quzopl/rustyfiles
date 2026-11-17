@@ -11638,5 +11638,209 @@
   "key": "Sağ adadaki tepsi simgeleri birbirine daha yakın durur; aynı yere daha çok simge sığar.",
   "tr": "Sağ adadaki tepsi simgeleri birbirine daha yakın durur; aynı yere daha çok simge sığar.",
   "en": "The tray icons of the right island stand closer together; more icons fit in the same room."
+ },
+ {
+  "id": "d8f517bd",
+  "key": "rustyfiles'ı yeniden başlat",
+  "tr": "rustyfiles'ı yeniden başlat",
+  "en": "Restart rustyfiles"
+ },
+ {
+  "id": "dac24e1d",
+  "key": "Boşken son kullanılanları göster",
+  "tr": "Boşken son kullanılanları göster",
+  "en": "Show recent items when empty"
+ },
+ {
+  "id": "e59d4182",
+  "key": "Arama kutusu",
+  "tr": "Arama kutusu",
+  "en": "Search box"
+ },
+ {
+  "id": "768be356",
+  "key": "Siyah (OLED)",
+  "tr": "Siyah (OLED)",
+  "en": "Black (OLED)"
+ },
+ {
+  "id": "df5cca29",
+  "key": "Uygulama: yakın zamanlar \"5 dakika önce\", eskileri Windows'un biçiminde; Sistem: her zaman Windows'un tarih ve saat biçimi; Evrensel: 2026-11-05 13:45",
+  "tr": "Uygulama: yakın zamanlar \"5 dakika önce\", eskileri Windows'un biçiminde; Sistem: her zaman Windows'un tarih ve saat biçimi; Evrensel: 2026-11-05 13:45",
+  "en": "Application: recent times as \"5 min ago\", older ones in Windows' format; System: always Windows' date and time format; Universal: 2026-11-05 13:45"
+ },
+ {
+  "id": "c537bf72",
+  "key": "Simge simge büyüt",
+  "tr": "Simge simge büyüt",
+  "en": "Snap to each icon"
+ },
+ {
+  "id": "13f67cf6",
+  "key": "Büyüme farenin altındaki simgeye oturur ve bir simgeden ötekine kısa bir kaymayla geçer. Kapalıyken fareyi sürekli izler.",
+  "tr": "Büyüme farenin altındaki simgeye oturur ve bir simgeden ötekine kısa bir kaymayla geçer. Kapalıyken fareyi sürekli izler.",
+  "en": "The growth settles on the icon under the pointer and slides quickly from one icon to the next. Off: it follows the pointer smoothly."
+ },
+ {
+  "id": "0df8814b",
+  "key": "Oturum",
+  "tr": "Oturum",
+  "en": "Session"
+ },
+ {
+  "id": "f38b2396",
+  "key": "Oturumu kaydet",
+  "tr": "Oturumu kaydet",
+  "en": "Save session"
+ },
+ {
+  "id": "32894336",
+  "key": "Oturumu kaydet…",
+  "tr": "Oturumu kaydet…",
+  "en": "Save session…"
+ },
+ {
+  "id": "63e26eeb",
+  "key": "Bu penceredeki sekmeler bu adla kaydedilir; sekme menüsündeki Oturum aç ile yeni bir pencerede açılır.",
+  "tr": "Bu penceredeki sekmeler bu adla kaydedilir; sekme menüsündeki Oturum aç ile yeni bir pencerede açılır.",
+  "en": "This window's tabs are saved under this name; Open session in the tab menu opens them in a new window."
+ },
+ {
+  "id": "b34ec580",
+  "key": "Bir ad yazın.",
+  "tr": "Bir ad yazın.",
+  "en": "Type a name."
+ },
+ {
+  "id": "8736ac6a",
+  "key": "Oturum aç",
+  "tr": "Oturum aç",
+  "en": "Open session"
+ },
+ {
+  "id": "12ca0ab2",
+  "key": "Oturumu sil",
+  "tr": "Oturumu sil",
+  "en": "Delete session"
+ },
+ {
+  "id": "029b1203",
+  "key": "Yalnızca simge",
+  "tr": "Yalnızca simge",
+  "en": "Icon only"
+ },
+ {
+  "id": "59fecfec",
+  "key": "Sol adadaki arama: bir kutu, yalnızca simgesi ya da hiç. Logo Başlat'ı yine açar.",
+  "tr": "Sol adadaki arama: bir kutu, yalnızca simgesi ya da hiç. Logo Başlat'ı yine açar.",
+  "en": "The left island's search: a box, its icon only, or none. The logo still opens Start."
+ },
+ {
+  "id": "19933c6f",
+  "key": "Kapalıyken HyperSearch bir şey yazılana kadar boş açılır",
+  "tr": "Kapalıyken HyperSearch bir şey yazılana kadar boş açılır",
+  "en": "When off, HyperSearch stays empty until something is typed"
+ },
+ {
+  "id": "4317c020",
+  "key": "Önemli güncelleme: rustyfiles {v}",
+  "tr": "Önemli güncelleme: rustyfiles {v}",
+  "en": "Important update: rustyfiles {v}"
+ },
+ {
+  "id": "20d40d60",
+  "key": "Önemli düzeltmeler içeriyor. Şimdi yeniden başlatın.",
+  "tr": "Önemli düzeltmeler içeriyor. Şimdi yeniden başlatın.",
+  "en": "It brings important fixes. Restart now."
+ },
+ {
+  "id": "fe7a8893",
+  "key": "Bağlantı olarak yapıştır",
+  "tr": "Bağlantı olarak yapıştır",
+  "en": "Paste as link"
+ },
+ {
+  "id": "d2233e21",
+  "key": "Sembolik bağlantı",
+  "tr": "Sembolik bağlantı",
+  "en": "Symbolic link"
+ },
+ {
+  "id": "13a9be04",
+  "key": "Sabit bağlantı (dosyalar)",
+  "tr": "Sabit bağlantı (dosyalar)",
+  "en": "Hard link (files)"
+ },
+ {
+  "id": "5f0be4cc",
+  "key": "Bağlantı noktası (klasörler)",
+  "tr": "Bağlantı noktası (klasörler)",
+  "en": "Junction (folders)"
+ },
+ {
+  "id": "0f5b4051",
+  "key": "Sembolik bağlantı olarak yapıştır",
+  "tr": "Sembolik bağlantı olarak yapıştır",
+  "en": "Paste as symbolic link"
+ },
+ {
+  "id": "340f3260",
+  "key": "Sabit bağlantı olarak yapıştır",
+  "tr": "Sabit bağlantı olarak yapıştır",
+  "en": "Paste as hard link"
+ },
+ {
+  "id": "f9a6e1c4",
+  "key": "Bağlantı noktası olarak yapıştır",
+  "tr": "Bağlantı noktası olarak yapıştır",
+  "en": "Paste as junction"
+ },
+ {
+  "id": "cb6f8589",
+  "key": "Bağlantı oluşturulamadı",
+  "tr": "Bağlantı oluşturulamadı",
+  "en": "Couldn't create the link"
+ },
+ {
+  "id": "7a0cfba2",
+  "key": "Kaynak artık yok.",
+  "tr": "Kaynak artık yok.",
+  "en": "The source no longer exists."
+ },
+ {
+  "id": "860fa8f0",
+  "key": "Sembolik bağlantı için Windows'ta Geliştirici Modu açık olmalı ya da rustyfiles yönetici olarak çalışmalı. Bağlantı noktası (klasörler) ve sabit bağlantı (dosyalar) bu izni istemez.",
+  "tr": "Sembolik bağlantı için Windows'ta Geliştirici Modu açık olmalı ya da rustyfiles yönetici olarak çalışmalı. Bağlantı noktası (klasörler) ve sabit bağlantı (dosyalar) bu izni istemez.",
+  "en": "A symbolic link needs Developer Mode turned on in Windows, or rustyfiles running as administrator. A junction (folders) and a hard link (files) don't need this."
+ },
+ {
+  "id": "35c18739",
+  "key": "Sabit bağlantı yalnızca dosyayla aynı sürücüde oluşturulabilir.",
+  "tr": "Sabit bağlantı yalnızca dosyayla aynı sürücüde oluşturulabilir.",
+  "en": "A hard link can only be created on the same drive as its file."
+ },
+ {
+  "id": "1101dd3a",
+  "key": "Sabit bağlantı yalnızca dosyalara oluşturulabilir. Klasörler için bağlantı noktası kullanın.",
+  "tr": "Sabit bağlantı yalnızca dosyalara oluşturulabilir. Klasörler için bağlantı noktası kullanın.",
+  "en": "A hard link can only be created to a file. For folders, use a junction."
+ },
+ {
+  "id": "a489214d",
+  "key": "Bağlantı noktası yalnızca klasörlere oluşturulabilir. Dosyalar için sabit ya da sembolik bağlantı kullanın.",
+  "tr": "Bağlantı noktası yalnızca klasörlere oluşturulabilir. Dosyalar için sabit ya da sembolik bağlantı kullanın.",
+  "en": "A junction can only be created to a folder. For files, use a hard or symbolic link."
+ },
+ {
+  "id": "d397d9e3",
+  "key": "Bağlantı noktası yalnızca yerel bir sürücüdeki klasörü gösterebilir.",
+  "tr": "Bağlantı noktası yalnızca yerel bir sürücüdeki klasörü gösterebilir.",
+  "en": "A junction can only point to a folder on a local drive."
+ },
+ {
+  "id": "83d4939a",
+  "key": "Bu klasörün dosya sistemi bu tür bağlantıyı desteklemiyor.",
+  "tr": "Bu klasörün dosya sistemi bu tür bağlantıyı desteklemiyor.",
+  "en": "This folder's file system doesn't support this kind of link."
  }
 ]

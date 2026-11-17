@@ -323,6 +323,53 @@ impl FolderView {
         .detach();
     }
 
+    /// Makes links of `kind` (symbolic, hard, junction) to the clipboard items in the current folder. Each link is one undo
+    /// step (Ctrl+Z takes the link away, never what it points to); what could not be linked is told in one notice.
+    pub fn paste_links(&mut self, kind: rf_win::links::LinkKind, window: &mut Window, cx: &mut Context<Self>) {
+        if self.shell_read_only(cx) {
+            return;
+        }
+        let Some(dir) = self.current_dir() else { return };
+        if rf_win::ftp::is_ftp(&dir) || crate::archive_view::is_browsable_path(&dir) {
+            return;
+        }
+        let (tx, rx) = oneshot::channel();
+        rf_win::sta::run(move |owner| {
+            let _ = tx.send(rf_win::clipboard::get_files(owner).map_err(|e| log::warn!("paste links: {e:#}")).ok().flatten());
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let Ok(Some((paths, _))) = rx.await else { return };
+            let work = cx.background_spawn(async move {
+                let mut made = Vec::new();
+                let mut failed = Vec::new();
+                for p in paths {
+                    match rf_win::links::create_in(kind, &p, &dir) {
+                        Ok(link) => made.push(link),
+                        Err(e) => {
+                            log::warn!("link {kind:?} to {p:?}: {e}");
+                            failed.push((p, e));
+                        }
+                    }
+                }
+                (made, failed)
+            });
+            let (made, failed) = work.await;
+            for path in &made {
+                crate::undo::push(crate::undo::UndoOp::Created { path: path.clone() });
+            }
+            let _ = this.update_in(cx, |v, window, cx| {
+                v.refresh(cx);
+                if let Some((_, first)) = failed.first() {
+                    let mut msg = link_error_text(first);
+                    msg.push_str("\n\n");
+                    msg.push_str(&failed.iter().map(|(p, _)| p.display().to_string()).collect::<Vec<_>>().join("\n"));
+                    crate::prompt::notice(t!("Bağlantı oluşturulamadı"), msg, window, cx);
+                }
+            });
+        })
+        .detach();
+    }
+
     pub(crate) fn paste_to(&mut self, dir: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
         // GetClipboardData can block on a slow source app (delayed rendering).
         let (tx, rx) = oneshot::channel();
@@ -972,6 +1019,21 @@ impl FolderView {
                 let _ = rf_win::shell::open_with(&p);
             });
         }
+    }
+}
+
+/// Why a link could not be made, in the user's language.
+fn link_error_text(e: &rf_win::links::LinkError) -> String {
+    use rf_win::links::LinkError as E;
+    match e {
+        E::SourceMissing => t!("Kaynak artık yok.").to_string(),
+        E::NeedsPrivilege => t!("Sembolik bağlantı için Windows'ta Geliştirici Modu açık olmalı ya da rustyfiles yönetici olarak çalışmalı. Bağlantı noktası (klasörler) ve sabit bağlantı (dosyalar) bu izni istemez.").to_string(),
+        E::DifferentVolume => t!("Sabit bağlantı yalnızca dosyayla aynı sürücüde oluşturulabilir.").to_string(),
+        E::HardLinkToFolder => t!("Sabit bağlantı yalnızca dosyalara oluşturulabilir. Klasörler için bağlantı noktası kullanın.").to_string(),
+        E::JunctionToFile => t!("Bağlantı noktası yalnızca klasörlere oluşturulabilir. Dosyalar için sabit ya da sembolik bağlantı kullanın.").to_string(),
+        E::JunctionNotLocal => t!("Bağlantı noktası yalnızca yerel bir sürücüdeki klasörü gösterebilir.").to_string(),
+        E::Unsupported => t!("Bu klasörün dosya sistemi bu tür bağlantıyı desteklemiyor.").to_string(),
+        E::Other(s) => s.clone(),
     }
 }
 
