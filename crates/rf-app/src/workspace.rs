@@ -1043,6 +1043,20 @@ impl Workspace {
                     }
                 }
             }
+            FolderEvent::CompareWithOtherPane => {
+                // the tab's left pane is the left side, whichever pane asked
+                let folder = |v: &Entity<FolderView>, cx: &App| match v.read(cx).location() {
+                    Location::Path(p) if !rf_win::ftp::is_ftp(p) && !crate::archive_view::is_browsable_path(p) => Some(p.clone()),
+                    _ => None,
+                };
+                let sides = this.tabs.iter().find(|t| &t.left == emitter || t.right.as_ref() == Some(emitter)).and_then(|t| {
+                    let r = t.right.as_ref()?;
+                    Some((folder(&t.left, cx)?, folder(r, cx)?))
+                });
+                if let Some((left, right)) = sides {
+                    this.open_tab(Location::Compare { left, right }, window, cx);
+                }
+            }
             FolderEvent::OpenInOtherPane(loc) => {
                 if let Some(other) = this.other_pane(emitter) {
                     other.update(cx, |v, cx| v.navigate(loc.clone(), cx));
@@ -1052,7 +1066,7 @@ impl Workspace {
                 let keep = this.active;
                 this.open_tab(loc.clone(), window, cx);
                 // a view asked for by name (disk usage) is what the user wants to see now
-                let wanted = matches!(loc, Location::DiskUsage(_));
+                let wanted = matches!(loc, Location::DiskUsage(_) | Location::Compare { .. });
                 if !wanted && !cx.global::<crate::settings::Settings>().focus_new_tab {
                     this.activate(keep, window, cx);
                 }
@@ -2524,6 +2538,7 @@ impl Workspace {
                 .map(|l| match l {
                     Location::Path(p) => p.to_string_lossy().into_owned(),
                     Location::DiskUsage(p) => crate::disk_usage::title(p),
+                    Location::Compare { left, right } => crate::compare_view::title(left, right),
                     other => crate::i18n::td(&other.title()),
                 })
                 .collect()
@@ -2906,6 +2921,7 @@ impl Workspace {
             // the shell's own name for the folder (the location may carry none)
             Location::Shell { .. } => vec![(self.active_tab().read(cx).title(cx), loc.clone())],
             Location::DiskUsage(path) => vec![(crate::disk_usage::title(path), loc.clone())],
+            Location::Compare { left, right } => vec![(crate::compare_view::title(left, right), loc.clone())],
             other => vec![(crate::i18n::td(&other.title()), other.clone())],
         };
         // Too long for the address box: hide leading segments after the drive behind "…"

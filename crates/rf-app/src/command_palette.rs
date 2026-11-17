@@ -65,6 +65,7 @@ fn commands() -> Vec<Cmd> {
         cmd!("Sola döndür", "", L::RotateCcw, RotateLeft),
         cmd!("Simgeleri küçült", "Ctrl+-", L::ZoomOut, ZoomOut),
         cmd!("Çift panel aç/kapat", "Ctrl+Shift+D", L::Columns2, ToggleDualPane),
+        cmd!("Diğer panelle karşılaştır", "", L::ArrowLeftRight, CompareWithOtherPane),
         cmd!("Panel değiştir", "F6", L::ArrowLeftRight, SwitchPane),
         cmd!("Bölmeyi yan yana böl", "", L::Columns2, SplitPaneSideBySide),
         cmd!("Bölmeyi üst üste böl", "", L::Rows2, SplitPaneStacked),

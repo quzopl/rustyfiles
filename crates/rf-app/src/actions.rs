@@ -54,6 +54,7 @@ gpui_kit::actions!(
         TogglePreview,
         ToggleSidebar,
         ToggleDualPane,
+        CompareWithOtherPane,
         SwitchPane,
         ToggleCommandPalette,
         GoSettings,

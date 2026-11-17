@@ -12,6 +12,7 @@ mod bulk_rename;
 mod command_palette;
 mod conflict_dialog;
 mod ctx_menu;
+mod compare_view;
 mod disk_usage;
 pub mod dock;
 mod desktop_page;

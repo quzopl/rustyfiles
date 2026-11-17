@@ -407,6 +407,9 @@ impl FolderView {
                 cx.emit(FolderEvent::OpenInNewTab(Location::DiskUsage(d.clone())))
             })));
         }
+        if self.dual {
+            v.push(Item::action(t!("Diğer panelle karşılaştır"), icon(L::ArrowLeftRight), act(me, |_, _, cx| cx.emit(FolderEvent::CompareWithOtherPane))));
+        }
         let show_hidden = self.filter.show_hidden;
         v.push(Item::action(t!("Gizli öğeleri göster"), icon(L::Eye), act(me, |v, _, cx| v.toggle_hidden(cx))).checked(show_hidden).hint("Ctrl+H"));
         v.push(Item::Separator);
