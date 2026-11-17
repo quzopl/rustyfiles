@@ -398,6 +398,18 @@ impl FolderView {
         let fallback = Rc::new(own_new_items(me));
         v.push(Item::Sub { label: t!("Yeni").into(), icon: icon(L::CirclePlus), items: Sub::Pending { key: "new", fallback: Some(fallback) } });
         v.push(Item::action(t!("Kısayol yapıştır"), icon(L::ClipboardPaste), act(me, |v, w, cx| v.paste_shortcuts(w, cx))).enabled(rf_win::clipboard::has_files()));
+        if rf_win::clipboard::has_files() {
+            use rf_win::links::LinkKind;
+            v.push(Item::sub(
+                t!("Bağlantı olarak yapıştır"),
+                icon(L::Link),
+                vec![
+                    Item::action(t!("Sembolik bağlantı"), icon(L::Link), act(me, |v, w, cx| v.paste_links(LinkKind::Symbolic, w, cx))),
+                    Item::action(t!("Sabit bağlantı (dosyalar)"), icon(L::Link), act(me, |v, w, cx| v.paste_links(LinkKind::Hard, w, cx))),
+                    Item::action(t!("Bağlantı noktası (klasörler)"), icon(L::Link), act(me, |v, w, cx| v.paste_links(LinkKind::Junction, w, cx))),
+                ],
+            ));
+        }
         let d = dir.to_path_buf();
         v.push(Item::action(t!("Kenar çubuğuna sabitle"), icon(L::Pin), act(me, move |v, _, cx| v.pin(d.clone(), cx))));
         v.push(Item::action(t!("Yolu kopyala"), icon(L::ClipboardCopy), act(me, |v, _, cx| v.copy_path(cx))));

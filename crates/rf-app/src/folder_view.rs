@@ -4682,6 +4682,9 @@ impl Render for FolderView {
             .on_action(cx.listener(|this, _: &PasteItems, window, cx| this.paste(window, cx)))
             .on_action(cx.listener(|this, _: &PasteIntoSelected, window, cx| this.paste_into_selected(window, cx)))
             .on_action(cx.listener(|this, _: &PasteShortcut, window, cx| this.paste_shortcuts(window, cx)))
+            .on_action(cx.listener(|this, _: &PasteSymlink, window, cx| this.paste_links(rf_win::links::LinkKind::Symbolic, window, cx)))
+            .on_action(cx.listener(|this, _: &PasteHardLink, window, cx| this.paste_links(rf_win::links::LinkKind::Hard, window, cx)))
+            .on_action(cx.listener(|this, _: &PasteJunction, window, cx| this.paste_links(rf_win::links::LinkKind::Junction, window, cx)))
             .on_action(cx.listener(|this, _: &DeleteItems, w, cx| {
                 if !this.bin_delete(w, cx) {
                     this.delete_selected(false, w, cx)

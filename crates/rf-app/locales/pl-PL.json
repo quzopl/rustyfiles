@@ -1935,5 +1935,20 @@
  "16622163": "Otwórz na monitorze",
  "db7893e9": "Dopasuj do ekranu",
  "7540225a": "Kompaktowy obszar powiadomień",
- "ae626bdb": "Ikony obszaru powiadomień prawej wyspy są ułożone bliżej siebie; w tym samym miejscu mieści się więcej ikon."
+ "ae626bdb": "Ikony obszaru powiadomień prawej wyspy są ułożone bliżej siebie; w tym samym miejscu mieści się więcej ikon.",
+ "fe7a8893": "Wklej jako link",
+ "d2233e21": "Link symboliczny",
+ "13a9be04": "Link twardy (pliki)",
+ "5f0be4cc": "Punkt połączenia (foldery)",
+ "0f5b4051": "Wklej jako link symboliczny",
+ "340f3260": "Wklej jako link twardy",
+ "f9a6e1c4": "Wklej jako punkt połączenia",
+ "cb6f8589": "Nie można utworzyć linku",
+ "7a0cfba2": "Źródło już nie istnieje.",
+ "860fa8f0": "Link symboliczny wymaga włączonego Trybu dewelopera w Windows albo uruchomienia rustyfiles jako administrator. Punkt połączenia (foldery) i link twardy (pliki) tego nie wymagają.",
+ "35c18739": "Link twardy można utworzyć tylko na tym samym dysku co plik.",
+ "1101dd3a": "Link twardy można utworzyć tylko do pliku. Dla folderów użyj punktu połączenia.",
+ "a489214d": "Punkt połączenia można utworzyć tylko do folderu. Dla plików użyj linku twardego lub symbolicznego.",
+ "d397d9e3": "Punkt połączenia może wskazywać tylko folder na dysku lokalnym.",
+ "83d4939a": "System plików tego folderu nie obsługuje tego rodzaju linku."
 }
