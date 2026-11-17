@@ -220,6 +220,10 @@ impl FolderView {
             v.push(Item::action(t!("Disk kullanımını göster"), icon(L::ChartPie), act(me, move |_, _, cx| {
                 cx.emit(FolderEvent::OpenInNewTab(Location::DiskUsage(d.clone())))
             })));
+            let d = target_dir.clone();
+            v.push(Item::action(t!("Yinelenen dosyaları bul"), icon(L::Files), act(me, move |_, _, cx| {
+                cx.emit(FolderEvent::OpenInNewTab(Location::Duplicates(d.clone())))
+            })));
         }
         if single_dir && mp.pin {
             let d = target_dir.clone();
@@ -417,6 +421,10 @@ impl FolderView {
             let d = dir.to_path_buf();
             v.push(Item::action(t!("Disk kullanımını göster"), icon(L::ChartPie), act(me, move |_, _, cx| {
                 cx.emit(FolderEvent::OpenInNewTab(Location::DiskUsage(d.clone())))
+            })));
+            let d = dir.to_path_buf();
+            v.push(Item::action(t!("Yinelenen dosyaları bul"), icon(L::Files), act(me, move |_, _, cx| {
+                cx.emit(FolderEvent::OpenInNewTab(Location::Duplicates(d.clone())))
             })));
         }
         let show_hidden = self.filter.show_hidden;

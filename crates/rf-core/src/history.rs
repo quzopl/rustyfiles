@@ -19,6 +19,8 @@ pub enum Location {
     Shell { parsing: String, name: String },
     /// Where the space goes under a folder or drive (the disk usage view).
     DiskUsage(PathBuf),
+    /// Files with the same contents under a folder or drive (the duplicates view).
+    Duplicates(PathBuf),
 }
 
 impl Location {
@@ -70,6 +72,7 @@ impl Location {
             Location::Path(p) => Location::Path(clean_path(&p)),
             Location::Search { root, query } => Location::Search { root: clean_path(&root), query },
             Location::DiskUsage(p) => Location::DiskUsage(clean_path(&p)),
+            Location::Duplicates(p) => Location::Duplicates(clean_path(&p)),
             other => other,
         }
     }
@@ -94,7 +97,7 @@ impl Location {
                 _ => Some(Location::Home),
             },
             Location::Search { root, .. } => Some(Location::Path(root.clone())),
-            Location::DiskUsage(p) => Some(Location::Path(p.clone())),
+            Location::DiskUsage(p) | Location::Duplicates(p) => Some(Location::Path(p.clone())),
             Location::RecycleBin | Location::Settings | Location::Tag(_) | Location::Library { .. } => {
                 Some(Location::Home)
             }
@@ -114,6 +117,7 @@ impl Location {
             Location::Shell { parsing, name } if name.is_empty() => shell_last_segment(parsing).to_string(),
             Location::Shell { name, .. } => name.clone(),
             Location::DiskUsage(p) => format!("Disk kullanımı — {}", display_name(p)),
+            Location::Duplicates(p) => format!("Yinelenen dosyalar — {}", display_name(p)),
             Location::Path(p) => display_name(p),
         }
     }

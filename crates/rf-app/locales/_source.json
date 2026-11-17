@@ -11842,5 +11842,137 @@
   "key": "Bu klasörün dosya sistemi bu tür bağlantıyı desteklemiyor.",
   "tr": "Bu klasörün dosya sistemi bu tür bağlantıyı desteklemiyor.",
   "en": "This folder's file system doesn't support this kind of link."
+ },
+ {
+  "id": "af4eb9ad",
+  "key": "Yinelenen dosyaları bul",
+  "tr": "Yinelenen dosyaları bul",
+  "en": "Find duplicate files"
+ },
+ {
+  "id": "3773dee1",
+  "key": "Yinelenen dosyalar",
+  "tr": "Yinelenen dosyalar",
+  "en": "Duplicate files"
+ },
+ {
+  "id": "11f47d7e",
+  "key": "Yinelenen dosyalar aranıyor…",
+  "tr": "Yinelenen dosyalar aranıyor…",
+  "en": "Looking for duplicate files…"
+ },
+ {
+  "id": "14c156c7",
+  "key": "Yinelenen dosya bulunmadı",
+  "tr": "Yinelenen dosya bulunmadı",
+  "en": "No duplicate files found"
+ },
+ {
+  "id": "40cf635c",
+  "key": "Karşılaştırılıyor:",
+  "tr": "Karşılaştırılıyor:",
+  "en": "Comparing:"
+ },
+ {
+  "id": "7686e055",
+  "key": "Kopyaları seç",
+  "tr": "Kopyaları seç",
+  "en": "Select copies"
+ },
+ {
+  "id": "6409698a",
+  "key": "Seçimi temizle",
+  "tr": "Seçimi temizle",
+  "en": "Clear selection"
+ },
+ {
+  "id": "d6187216",
+  "key": "Silmek için işaretle",
+  "tr": "Silmek için işaretle",
+  "en": "Mark for deletion"
+ },
+ {
+  "id": "e9303ca1",
+  "key": "İşareti kaldır",
+  "tr": "İşareti kaldır",
+  "en": "Unmark"
+ },
+ {
+  "id": "f645d8de",
+  "key": "Tüm kopyalar silinsin mi?",
+  "tr": "Tüm kopyalar silinsin mi?",
+  "en": "Delete every copy?"
+ },
+ {
+  "id": "af94c9ec",
+  "key": "grubun bütün kopyaları işaretli: bu dosyalardan hiçbiri kalmayacak. Geri Dönüşüm Kutusu'ndan geri alınabilirler.",
+  "tr": "grubun bütün kopyaları işaretli: bu dosyalardan hiçbiri kalmayacak. Geri Dönüşüm Kutusu'ndan geri alınabilirler.",
+  "en": "group(s) have every copy marked: none of these files will be left. They can be restored from the Recycle Bin."
+ },
+ {
+  "id": "dded41ab",
+  "key": "Yine de taşı",
+  "tr": "Yine de taşı",
+  "en": "Move anyway"
+ },
+ {
+  "id": "e8ef5e69",
+  "key": "Yeniden tara",
+  "tr": "Yeniden tara",
+  "en": "Scan again"
+ },
+ {
+  "id": "c4fcba9f",
+  "key": "boşaltılabilir",
+  "tr": "boşaltılabilir",
+  "en": "can be freed"
+ },
+ {
+  "id": "9f22d5e8",
+  "key": "dosya okunamadı",
+  "tr": "dosya okunamadı",
+  "en": "files could not be read"
+ },
+ {
+  "id": "5ce91fa6",
+  "key": "dosya tarandı",
+  "tr": "dosya tarandı",
+  "en": "files scanned"
+ },
+ {
+  "id": "136de9ea",
+  "key": "en eski",
+  "tr": "en eski",
+  "en": "oldest"
+ },
+ {
+  "id": "bb691861",
+  "key": "grup",
+  "tr": "grup",
+  "en": "groups"
+ },
+ {
+  "id": "83ced047",
+  "key": "grup daha",
+  "tr": "grup daha",
+  "en": "more groups"
+ },
+ {
+  "id": "e25b2d00",
+  "key": "her biri",
+  "tr": "her biri",
+  "en": "each"
+ },
+ {
+  "id": "3626d157",
+  "key": "kopya",
+  "tr": "kopya",
+  "en": "copies"
+ },
+ {
+  "id": "d58ab484",
+  "key": "tarama yarıda kaldı",
+  "tr": "tarama yarıda kaldı",
+  "en": "the scan was stopped"
  }
 ]

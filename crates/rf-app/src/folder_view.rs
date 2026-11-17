@@ -460,6 +460,7 @@ pub struct FolderView {
     recycle: Option<Entity<crate::recycle_view::RecycleView>>,
     /// The disk usage page of this tab (kept while the tab stays on that folder).
     disk_usage: Option<Entity<crate::disk_usage::DiskUsageView>>,
+    duplicates: Option<Entity<crate::duplicates::DuplicatesView>>,
     /// Git status of the repository containing this folder (if any).
     pub git: Option<Arc<rf_win::git::GitStatus>>,
     /// Last commit per child of the current folder (commit columns), keyed by name.
@@ -629,6 +630,7 @@ impl FolderView {
             typeahead: (String::new(), Instant::now()),
             recycle: None,
             disk_usage: None,
+            duplicates: None,
             git: None,
             git_commits: None,
             column_cache: Default::default(),
@@ -678,6 +680,9 @@ impl FolderView {
         if let Location::DiskUsage(p) = self.location() {
             return crate::disk_usage::title(p);
         }
+        if let Location::Duplicates(p) = self.location() {
+            return crate::duplicates::title(p);
+        }
         crate::i18n::td(&self.location().title())
     }
 
@@ -691,6 +696,7 @@ impl FolderView {
             Location::Library { .. } => L::Library,
             Location::Shell { .. } => L::Usb,
             Location::DiskUsage(_) => L::ChartPie,
+            Location::Duplicates(_) => L::Files,
             Location::Path(p) if rf_win::network::server_root(p).is_some() => L::Server,
             // the archive itself or a folder inside it (name check only: no disk access here, not even for a `.001` name)
             Location::Path(p) if crate::archive_view::is_browsable_path_by_name(p) => L::FileArchive,
@@ -4583,6 +4589,27 @@ impl Render for FolderView {
                         })
                         .detach();
                         self.disk_usage = Some(dv.clone());
+                        dv
+                    }
+                };
+                div().size_full().child(dv).into_any_element()
+            }
+            Location::Duplicates(root) => {
+                let root = root.clone();
+                let dv = match &self.duplicates {
+                    Some(dv) if dv.read(cx).root() == root => dv.clone(),
+                    _ => {
+                        let dv = cx.new(|cx| crate::duplicates::DuplicatesView::new(root, cx));
+                        cx.subscribe(&dv, |_, _, ev: &crate::duplicates::DupesEvent, cx| match ev {
+                            // (the analysis stays in its tab: the folder opens in a tab of its own, with the file selected)
+                            crate::duplicates::DupesEvent::ShowInFolder(path) => {
+                                if let Some(parent) = path.parent() {
+                                    cx.emit(FolderEvent::OpenInNewTab(Location::Path(parent.to_path_buf())));
+                                }
+                            }
+                        })
+                        .detach();
+                        self.duplicates = Some(dv.clone());
                         dv
                     }
                 };
