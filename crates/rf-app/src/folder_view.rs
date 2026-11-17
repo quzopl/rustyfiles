@@ -191,6 +191,8 @@ pub enum FolderEvent {
     ToOtherPane(rf_win::fileops::Transfer, Vec<PathBuf>),
     /// Dual pane: show a folder in the other pane.
     OpenInOtherPane(Location),
+    /// Dual pane: compare this pane's folder with the other pane's, in a new tab.
+    CompareWithOtherPane,
     OpenInNewWindow(Location),
     /// Space / Esc: open or close Quick Look for the focused item.
     QuickLook,
@@ -461,6 +463,7 @@ pub struct FolderView {
     /// The disk usage page of this tab (kept while the tab stays on that folder).
     disk_usage: Option<Entity<crate::disk_usage::DiskUsageView>>,
     duplicates: Option<Entity<crate::duplicates::DuplicatesView>>,
+    compare: Option<Entity<crate::compare_view::CompareView>>,
     /// Git status of the repository containing this folder (if any).
     pub git: Option<Arc<rf_win::git::GitStatus>>,
     /// Last commit per child of the current folder (commit columns), keyed by name.
@@ -631,6 +634,7 @@ impl FolderView {
             recycle: None,
             disk_usage: None,
             duplicates: None,
+            compare: None,
             git: None,
             git_commits: None,
             column_cache: Default::default(),
@@ -683,6 +687,9 @@ impl FolderView {
         if let Location::Duplicates(p) = self.location() {
             return crate::duplicates::title(p);
         }
+        if let Location::Compare { left, right } = self.location() {
+            return crate::compare_view::title(left, right);
+        }
         crate::i18n::td(&self.location().title())
     }
 
@@ -697,6 +704,7 @@ impl FolderView {
             Location::Shell { .. } => L::Usb,
             Location::DiskUsage(_) => L::ChartPie,
             Location::Duplicates(_) => L::Files,
+            Location::Compare { .. } => L::ArrowLeftRight,
             Location::Path(p) if rf_win::network::server_root(p).is_some() => L::Server,
             // the archive itself or a folder inside it (name check only: no disk access here, not even for a `.001` name)
             Location::Path(p) if crate::archive_view::is_browsable_path_by_name(p) => L::FileArchive,
@@ -4615,6 +4623,18 @@ impl Render for FolderView {
                 };
                 div().size_full().child(dv).into_any_element()
             }
+            Location::Compare { left, right } => {
+                let (left, right) = (left.clone(), right.clone());
+                let cv = match &self.compare {
+                    Some(cv) if cv.read(cx).sides() == (left.as_path(), right.as_path()) => cv.clone(),
+                    _ => {
+                        let cv = cx.new(|cx| crate::compare_view::CompareView::new(left, right, cx));
+                        self.compare = Some(cv.clone());
+                        cv
+                    }
+                };
+                div().size_full().child(cv).into_any_element()
+            }
             Location::RecycleBin => {
                 let rv = match &self.recycle {
                     Some(rv) => rv.clone(),
@@ -4712,6 +4732,11 @@ impl Render for FolderView {
             .on_action(cx.listener(|this, _: &PasteSymlink, window, cx| this.paste_links(rf_win::links::LinkKind::Symbolic, window, cx)))
             .on_action(cx.listener(|this, _: &PasteHardLink, window, cx| this.paste_links(rf_win::links::LinkKind::Hard, window, cx)))
             .on_action(cx.listener(|this, _: &PasteJunction, window, cx| this.paste_links(rf_win::links::LinkKind::Junction, window, cx)))
+            .on_action(cx.listener(|this, _: &CompareWithOtherPane, _, cx| {
+                if this.dual {
+                    cx.emit(FolderEvent::CompareWithOtherPane)
+                }
+            }))
             .on_action(cx.listener(|this, _: &DeleteItems, w, cx| {
                 if !this.bin_delete(w, cx) {
                     this.delete_selected(false, w, cx)

@@ -42,6 +42,7 @@ pub mod indexer;
 pub mod inputlang;
 pub mod known;
 pub mod dupes;
+pub mod foldercmp;
 pub mod libraries;
 pub mod links;
 pub mod ftp;

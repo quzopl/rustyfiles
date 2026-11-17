@@ -21,6 +21,8 @@ pub enum Location {
     DiskUsage(PathBuf),
     /// Files with the same contents under a folder or drive (the duplicates view).
     Duplicates(PathBuf),
+    /// Two folder trees compared (the folder comparison view; usually the two panes of a dual-pane tab).
+    Compare { left: PathBuf, right: PathBuf },
 }
 
 impl Location {
@@ -73,6 +75,7 @@ impl Location {
             Location::Search { root, query } => Location::Search { root: clean_path(&root), query },
             Location::DiskUsage(p) => Location::DiskUsage(clean_path(&p)),
             Location::Duplicates(p) => Location::Duplicates(clean_path(&p)),
+            Location::Compare { left, right } => Location::Compare { left: clean_path(&left), right: clean_path(&right) },
             other => other,
         }
     }
@@ -98,6 +101,7 @@ impl Location {
             },
             Location::Search { root, .. } => Some(Location::Path(root.clone())),
             Location::DiskUsage(p) | Location::Duplicates(p) => Some(Location::Path(p.clone())),
+            Location::Compare { left, .. } => Some(Location::Path(left.clone())),
             Location::RecycleBin | Location::Settings | Location::Tag(_) | Location::Library { .. } => {
                 Some(Location::Home)
             }
@@ -118,6 +122,7 @@ impl Location {
             Location::Shell { name, .. } => name.clone(),
             Location::DiskUsage(p) => format!("Disk kullanımı — {}", display_name(p)),
             Location::Duplicates(p) => format!("Yinelenen dosyalar — {}", display_name(p)),
+            Location::Compare { left, right } => format!("Karşılaştır: {} ↔ {}", display_name(left), display_name(right)),
             Location::Path(p) => display_name(p),
         }
     }

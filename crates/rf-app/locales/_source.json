@@ -11974,5 +11974,125 @@
   "key": "tarama yarıda kaldı",
   "tr": "tarama yarıda kaldı",
   "en": "the scan was stopped"
+ },
+ {
+  "id": "f0fbc024",
+  "key": "Diğer panelle karşılaştır",
+  "tr": "Diğer panelle karşılaştır",
+  "en": "Compare with the other pane"
+ },
+ {
+  "id": "11768a86",
+  "key": "Karşılaştır",
+  "tr": "Karşılaştır",
+  "en": "Compare"
+ },
+ {
+  "id": "9a5a7cb5",
+  "key": "Klasörler karşılaştırılıyor…",
+  "tr": "Klasörler karşılaştırılıyor…",
+  "en": "Comparing folders…"
+ },
+ {
+  "id": "b69010a1",
+  "key": "Sol:",
+  "tr": "Sol:",
+  "en": "Left:"
+ },
+ {
+  "id": "d34392f6",
+  "key": "Sağ:",
+  "tr": "Sağ:",
+  "en": "Right:"
+ },
+ {
+  "id": "9073fbbd",
+  "key": "Yalnız solda",
+  "tr": "Yalnız solda",
+  "en": "Only on the left"
+ },
+ {
+  "id": "22c7a31e",
+  "key": "Yalnız sağda",
+  "tr": "Yalnız sağda",
+  "en": "Only on the right"
+ },
+ {
+  "id": "70597d69",
+  "key": "Solda daha yeni",
+  "tr": "Solda daha yeni",
+  "en": "Newer on the left"
+ },
+ {
+  "id": "02237154",
+  "key": "Sağda daha yeni",
+  "tr": "Sağda daha yeni",
+  "en": "Newer on the right"
+ },
+ {
+  "id": "27f2b392",
+  "key": "Farklı",
+  "tr": "Farklı",
+  "en": "Different"
+ },
+ {
+  "id": "4f63178c",
+  "key": "Aynı",
+  "tr": "Aynı",
+  "en": "Same"
+ },
+ {
+  "id": "dfdb8341",
+  "key": "Sağa gidecekleri seç",
+  "tr": "Sağa gidecekleri seç",
+  "en": "Select changes for the right"
+ },
+ {
+  "id": "ae759a1c",
+  "key": "Sola gidecekleri seç",
+  "tr": "Sola gidecekleri seç",
+  "en": "Select changes for the left"
+ },
+ {
+  "id": "e6632ca4",
+  "key": "Sağa kopyala",
+  "tr": "Sağa kopyala",
+  "en": "Copy to the right"
+ },
+ {
+  "id": "fda57473",
+  "key": "Sola kopyala",
+  "tr": "Sola kopyala",
+  "en": "Copy to the left"
+ },
+ {
+  "id": "5f645794",
+  "key": "Yeniden karşılaştır",
+  "tr": "Yeniden karşılaştır",
+  "en": "Compare again"
+ },
+ {
+  "id": "381bd3c9",
+  "key": "Klasörler aynı",
+  "tr": "Klasörler aynı",
+  "en": "The folders are the same"
+ },
+ {
+  "id": "cd8da931",
+  "key": "Gösterilecek fark yok",
+  "tr": "Gösterilecek fark yok",
+  "en": "No differences to show"
+ },
+ {
+  "id": "4e494abd",
+  "key": "öğe karşılaştırıldı",
+  "tr": "öğe karşılaştırıldı",
+  "en": "items compared"
+ },
+ {
+  "id": "886f4116",
+  "key": "kopyalanıyor; bitince yeniden karşılaştırılacak",
+  "tr": "kopyalanıyor; bitince yeniden karşılaştırılacak",
+  "en": "copying; the folders are compared again when it is done"
  }
 ]
