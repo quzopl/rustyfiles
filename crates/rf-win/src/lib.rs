@@ -41,6 +41,7 @@ pub mod hash;
 pub mod indexer;
 pub mod inputlang;
 pub mod known;
+pub mod dupes;
 pub mod libraries;
 pub mod ftp;
 pub mod keys;

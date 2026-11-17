@@ -1052,7 +1052,7 @@ impl Workspace {
                 let keep = this.active;
                 this.open_tab(loc.clone(), window, cx);
                 // a view asked for by name (disk usage) is what the user wants to see now
-                let wanted = matches!(loc, Location::DiskUsage(_));
+                let wanted = matches!(loc, Location::DiskUsage(_) | Location::Duplicates(_));
                 if !wanted && !cx.global::<crate::settings::Settings>().focus_new_tab {
                     this.activate(keep, window, cx);
                 }
@@ -2524,6 +2524,7 @@ impl Workspace {
                 .map(|l| match l {
                     Location::Path(p) => p.to_string_lossy().into_owned(),
                     Location::DiskUsage(p) => crate::disk_usage::title(p),
+                    Location::Duplicates(p) => crate::duplicates::title(p),
                     other => crate::i18n::td(&other.title()),
                 })
                 .collect()
@@ -2906,6 +2907,7 @@ impl Workspace {
             // the shell's own name for the folder (the location may carry none)
             Location::Shell { .. } => vec![(self.active_tab().read(cx).title(cx), loc.clone())],
             Location::DiskUsage(path) => vec![(crate::disk_usage::title(path), loc.clone())],
+            Location::Duplicates(path) => vec![(crate::duplicates::title(path), loc.clone())],
             other => vec![(crate::i18n::td(&other.title()), other.clone())],
         };
         // Too long for the address box: hide leading segments after the drive behind "…"

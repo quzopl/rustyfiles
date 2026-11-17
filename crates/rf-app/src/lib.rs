@@ -13,6 +13,7 @@ mod command_palette;
 mod conflict_dialog;
 mod ctx_menu;
 mod disk_usage;
+mod duplicates;
 pub mod dock;
 mod desktop_page;
 mod dock_page;

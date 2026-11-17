@@ -11638,5 +11638,251 @@
   "key": "Sağ adadaki tepsi simgeleri birbirine daha yakın durur; aynı yere daha çok simge sığar.",
   "tr": "Sağ adadaki tepsi simgeleri birbirine daha yakın durur; aynı yere daha çok simge sığar.",
   "en": "The tray icons of the right island stand closer together; more icons fit in the same room."
+ },
+ {
+  "id": "d8f517bd",
+  "key": "rustyfiles'ı yeniden başlat",
+  "tr": "rustyfiles'ı yeniden başlat",
+  "en": "Restart rustyfiles"
+ },
+ {
+  "id": "dac24e1d",
+  "key": "Boşken son kullanılanları göster",
+  "tr": "Boşken son kullanılanları göster",
+  "en": "Show recent items when empty"
+ },
+ {
+  "id": "e59d4182",
+  "key": "Arama kutusu",
+  "tr": "Arama kutusu",
+  "en": "Search box"
+ },
+ {
+  "id": "768be356",
+  "key": "Siyah (OLED)",
+  "tr": "Siyah (OLED)",
+  "en": "Black (OLED)"
+ },
+ {
+  "id": "df5cca29",
+  "key": "Uygulama: yakın zamanlar \"5 dakika önce\", eskileri Windows'un biçiminde; Sistem: her zaman Windows'un tarih ve saat biçimi; Evrensel: 2026-11-05 13:45",
+  "tr": "Uygulama: yakın zamanlar \"5 dakika önce\", eskileri Windows'un biçiminde; Sistem: her zaman Windows'un tarih ve saat biçimi; Evrensel: 2026-11-05 13:45",
+  "en": "Application: recent times as \"5 min ago\", older ones in Windows' format; System: always Windows' date and time format; Universal: 2026-11-05 13:45"
+ },
+ {
+  "id": "c537bf72",
+  "key": "Simge simge büyüt",
+  "tr": "Simge simge büyüt",
+  "en": "Snap to each icon"
+ },
+ {
+  "id": "13f67cf6",
+  "key": "Büyüme farenin altındaki simgeye oturur ve bir simgeden ötekine kısa bir kaymayla geçer. Kapalıyken fareyi sürekli izler.",
+  "tr": "Büyüme farenin altındaki simgeye oturur ve bir simgeden ötekine kısa bir kaymayla geçer. Kapalıyken fareyi sürekli izler.",
+  "en": "The growth settles on the icon under the pointer and slides quickly from one icon to the next. Off: it follows the pointer smoothly."
+ },
+ {
+  "id": "0df8814b",
+  "key": "Oturum",
+  "tr": "Oturum",
+  "en": "Session"
+ },
+ {
+  "id": "f38b2396",
+  "key": "Oturumu kaydet",
+  "tr": "Oturumu kaydet",
+  "en": "Save session"
+ },
+ {
+  "id": "32894336",
+  "key": "Oturumu kaydet…",
+  "tr": "Oturumu kaydet…",
+  "en": "Save session…"
+ },
+ {
+  "id": "63e26eeb",
+  "key": "Bu penceredeki sekmeler bu adla kaydedilir; sekme menüsündeki Oturum aç ile yeni bir pencerede açılır.",
+  "tr": "Bu penceredeki sekmeler bu adla kaydedilir; sekme menüsündeki Oturum aç ile yeni bir pencerede açılır.",
+  "en": "This window's tabs are saved under this name; Open session in the tab menu opens them in a new window."
+ },
+ {
+  "id": "b34ec580",
+  "key": "Bir ad yazın.",
+  "tr": "Bir ad yazın.",
+  "en": "Type a name."
+ },
+ {
+  "id": "8736ac6a",
+  "key": "Oturum aç",
+  "tr": "Oturum aç",
+  "en": "Open session"
+ },
+ {
+  "id": "12ca0ab2",
+  "key": "Oturumu sil",
+  "tr": "Oturumu sil",
+  "en": "Delete session"
+ },
+ {
+  "id": "029b1203",
+  "key": "Yalnızca simge",
+  "tr": "Yalnızca simge",
+  "en": "Icon only"
+ },
+ {
+  "id": "59fecfec",
+  "key": "Sol adadaki arama: bir kutu, yalnızca simgesi ya da hiç. Logo Başlat'ı yine açar.",
+  "tr": "Sol adadaki arama: bir kutu, yalnızca simgesi ya da hiç. Logo Başlat'ı yine açar.",
+  "en": "The left island's search: a box, its icon only, or none. The logo still opens Start."
+ },
+ {
+  "id": "19933c6f",
+  "key": "Kapalıyken HyperSearch bir şey yazılana kadar boş açılır",
+  "tr": "Kapalıyken HyperSearch bir şey yazılana kadar boş açılır",
+  "en": "When off, HyperSearch stays empty until something is typed"
+ },
+ {
+  "id": "4317c020",
+  "key": "Önemli güncelleme: rustyfiles {v}",
+  "tr": "Önemli güncelleme: rustyfiles {v}",
+  "en": "Important update: rustyfiles {v}"
+ },
+ {
+  "id": "20d40d60",
+  "key": "Önemli düzeltmeler içeriyor. Şimdi yeniden başlatın.",
+  "tr": "Önemli düzeltmeler içeriyor. Şimdi yeniden başlatın.",
+  "en": "It brings important fixes. Restart now."
+ },
+ {
+  "id": "af4eb9ad",
+  "key": "Yinelenen dosyaları bul",
+  "tr": "Yinelenen dosyaları bul",
+  "en": "Find duplicate files"
+ },
+ {
+  "id": "3773dee1",
+  "key": "Yinelenen dosyalar",
+  "tr": "Yinelenen dosyalar",
+  "en": "Duplicate files"
+ },
+ {
+  "id": "11f47d7e",
+  "key": "Yinelenen dosyalar aranıyor…",
+  "tr": "Yinelenen dosyalar aranıyor…",
+  "en": "Looking for duplicate files…"
+ },
+ {
+  "id": "14c156c7",
+  "key": "Yinelenen dosya bulunmadı",
+  "tr": "Yinelenen dosya bulunmadı",
+  "en": "No duplicate files found"
+ },
+ {
+  "id": "40cf635c",
+  "key": "Karşılaştırılıyor:",
+  "tr": "Karşılaştırılıyor:",
+  "en": "Comparing:"
+ },
+ {
+  "id": "7686e055",
+  "key": "Kopyaları seç",
+  "tr": "Kopyaları seç",
+  "en": "Select copies"
+ },
+ {
+  "id": "6409698a",
+  "key": "Seçimi temizle",
+  "tr": "Seçimi temizle",
+  "en": "Clear selection"
+ },
+ {
+  "id": "d6187216",
+  "key": "Silmek için işaretle",
+  "tr": "Silmek için işaretle",
+  "en": "Mark for deletion"
+ },
+ {
+  "id": "e9303ca1",
+  "key": "İşareti kaldır",
+  "tr": "İşareti kaldır",
+  "en": "Unmark"
+ },
+ {
+  "id": "f645d8de",
+  "key": "Tüm kopyalar silinsin mi?",
+  "tr": "Tüm kopyalar silinsin mi?",
+  "en": "Delete every copy?"
+ },
+ {
+  "id": "af94c9ec",
+  "key": "grubun bütün kopyaları işaretli: bu dosyalardan hiçbiri kalmayacak. Geri Dönüşüm Kutusu'ndan geri alınabilirler.",
+  "tr": "grubun bütün kopyaları işaretli: bu dosyalardan hiçbiri kalmayacak. Geri Dönüşüm Kutusu'ndan geri alınabilirler.",
+  "en": "group(s) have every copy marked: none of these files will be left. They can be restored from the Recycle Bin."
+ },
+ {
+  "id": "dded41ab",
+  "key": "Yine de taşı",
+  "tr": "Yine de taşı",
+  "en": "Move anyway"
+ },
+ {
+  "id": "e8ef5e69",
+  "key": "Yeniden tara",
+  "tr": "Yeniden tara",
+  "en": "Scan again"
+ },
+ {
+  "id": "c4fcba9f",
+  "key": "boşaltılabilir",
+  "tr": "boşaltılabilir",
+  "en": "can be freed"
+ },
+ {
+  "id": "9f22d5e8",
+  "key": "dosya okunamadı",
+  "tr": "dosya okunamadı",
+  "en": "files could not be read"
+ },
+ {
+  "id": "5ce91fa6",
+  "key": "dosya tarandı",
+  "tr": "dosya tarandı",
+  "en": "files scanned"
+ },
+ {
+  "id": "136de9ea",
+  "key": "en eski",
+  "tr": "en eski",
+  "en": "oldest"
+ },
+ {
+  "id": "bb691861",
+  "key": "grup",
+  "tr": "grup",
+  "en": "groups"
+ },
+ {
+  "id": "83ced047",
+  "key": "grup daha",
+  "tr": "grup daha",
+  "en": "more groups"
+ },
+ {
+  "id": "e25b2d00",
+  "key": "her biri",
+  "tr": "her biri",
+  "en": "each"
+ },
+ {
+  "id": "3626d157",
+  "key": "kopya",
+  "tr": "kopya",
+  "en": "copies"
+ },
+ {
+  "id": "d58ab484",
+  "key": "tarama yarıda kaldı",
+  "tr": "tarama yarıda kaldı",
+  "en": "the scan was stopped"
  }
 ]
