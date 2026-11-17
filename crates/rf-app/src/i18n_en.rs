@@ -1977,4 +1977,5 @@ pub const EN: &[(&str, &str)] = &[
     ("Dock'a sabitlendi", "Pinned to the Dock"),
     ("Yol kopyalandı", "Path copied"),
     ("Başlat'tan kaldır", "Unpin from Start"),
+    ("Sürücü", "Drive"),
 ];

@@ -371,6 +371,7 @@ impl FolderView {
             v.push(Item::action(t!("Terminalde aç"), icon(L::SquareTerminal), move |_, _| open_terminal(d.clone())).hint("Ctrl+Shift+`"));
         }
         v.push(Item::Separator);
+        v.push(Item::action(t!("Özellikler"), icon(L::Wrench), act(me, |v, _, cx| v.properties(cx))).hint("Alt+Enter"));
         v.push(Item::Sub { label: t!("Diğer seçenekleri göster").into(), icon: icon(L::Ellipsis), items: Sub::Pending { key: "more", fallback: None } });
         Menu { quick: self.quick_clipboard(me, true), items: v }
     }
@@ -429,6 +430,7 @@ impl FolderView {
             v.push(Item::sub("Git", icon(L::GitBranch), git_items));
         }
         v.push(Item::Separator);
+        v.push(Item::action(t!("Özellikler"), icon(L::Wrench), act(me, |v, _, cx| v.folder_properties(cx))).hint("Alt+Enter"));
         v.push(Item::Sub { label: t!("Diğer seçenekleri göster").into(), icon: icon(L::Ellipsis), items: Sub::Pending { key: "more", fallback: None } });
         Menu { quick: self.quick_clipboard(me, false), items: v }
     }
