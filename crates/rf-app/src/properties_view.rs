@@ -184,6 +184,8 @@ struct Loaded {
     /// The volume can compress / encrypt.
     caps: (bool, bool),
     drive: Option<rf_win::drives::Drive>,
+    /// The drive a file or folder (not a drive itself) is on, for its free space.
+    host_drive: Option<rf_win::drives::Drive>,
     share: Option<String>,
     pe: Option<rf_win::pe::PeInfo>,
     signatures: Option<rf_win::signature::Signatures>,
@@ -226,6 +228,7 @@ pub struct PropsView {
     streams: Vec<(String, u64)>,
     unblock: bool,
     drive: Option<rf_win::drives::Drive>,
+    host_drive: Option<rf_win::drives::Drive>,
     share: Option<String>,
     pe: Option<rf_win::pe::PeInfo>,
     signatures: Option<rf_win::signature::Signatures>,
@@ -285,6 +288,14 @@ fn signable(p: &Path) -> bool {
 }
 
 /// A drive's root ("C:\").
+/// The drive letter of a path on a lettered drive ("C:\x" → 'C'); `None` for a network path or anything else.
+fn drive_letter(p: &Path) -> Option<char> {
+    let s = p.to_string_lossy();
+    let s = s.strip_prefix(r"\\?\").unwrap_or(&s);
+    let b = s.as_bytes();
+    (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':').then(|| (b[0] as char).to_ascii_uppercase())
+}
+
 fn is_root(p: &Path) -> bool {
     p.parent().is_none() && p.to_string_lossy().contains(':')
 }
@@ -323,6 +334,7 @@ impl PropsView {
             streams: Vec::new(),
             unblock: false,
             drive: None,
+            host_drive: None,
             share: None,
             pe: None,
             signatures: None,
@@ -373,6 +385,7 @@ impl PropsView {
                     v.streams = l.streams;
                     v.caps = l.caps;
                     v.drive = l.drive;
+                    v.host_drive = l.host_drive;
                     v.share = l.share;
                     v.pe = l.pe;
                     v.signatures = l.signatures;
@@ -955,6 +968,9 @@ impl PropsView {
             card1.push(row(p, t!("İçerik"), format!("{} {}, {} {}", group(t.files), t!("dosya"), group(t.dirs), t!("klasör"))));
         }
         out.push(card(p, card1));
+        if let Some(d) = &self.host_drive {
+            out.push(host_drive_card(d, p));
+        }
 
         if let Some(Ok(i)) = &self.info {
             out.push(card(
@@ -1668,6 +1684,9 @@ fn load_one(p: &Path) -> Loaded {
     if is_dir && is_root(p) {
         let letter = p.to_string_lossy().chars().next().unwrap_or('C').to_ascii_uppercase();
         l.drive = rf_win::drives::list_drives().into_iter().find(|d| d.letter.to_ascii_uppercase() == letter);
+    } else if let Some(letter) = drive_letter(p) {
+        // a file or folder on a lettered drive: how much room is left there (as Explorer shows only for the drive itself)
+        l.host_drive = rf_win::drives::list_drives().into_iter().find(|d| d.letter.to_ascii_uppercase() == letter);
     }
     if is_dir {
         l.share = rf_win::fileinfo::share_of(p);
@@ -1842,6 +1861,39 @@ fn text_field(p: &Palette, input: &Entity<InputState>) -> AnyElement {
         .border_color(p.border)
         .child(Input::new(input).appearance(false))
         .into_any_element()
+}
+
+/// The drive a file or folder is on: which one, and how much of it is free, with a bar like the drive's own page.
+fn host_drive_card(d: &rf_win::drives::Drive, p: &Palette) -> AnyElement {
+    use rf_win::drives::DriveKind;
+    let kind = match d.kind {
+        DriveKind::Removable => t!("Çıkarılabilir disk"),
+        DriveKind::Network => t!("Ağ sürücüsü"),
+        DriveKind::Optical => t!("CD/DVD sürücüsü"),
+        _ => t!("Yerel Disk"),
+    };
+    let frac = d.used_fraction().clamp(0.0, 1.0);
+    let used_color = if frac > 0.9 { p.danger } else { p.accent };
+    let name = if d.label.is_empty() { format!("{}: ({kind})", d.letter) } else { format!("{} ({}:) — {kind}", d.label, d.letter) };
+    card(
+        p,
+        vec![
+            row(p, t!("Sürücü"), name),
+            row(p, t!("Boş alan"), format!("{} / {}", format::size(d.free), format::size(d.total))),
+            div()
+                .mt_1()
+                .mb_1()
+                .h(px(8.))
+                .w_full()
+                .rounded(px(4.))
+                .bg(p.hover)
+                .border_1()
+                .border_color(p.border)
+                .child(div().h_full().rounded(px(4.)).bg(used_color).w(relative(frac)))
+                .into_any_element(),
+            div().text_xs().text_color(p.text_secondary).child(format!("{} %{:.0}", t!("Dolu:"), frac * 100.0)).into_any_element(),
+        ],
+    )
 }
 
 fn card(p: &Palette, rows: Vec<AnyElement>) -> AnyElement {
@@ -2054,7 +2106,16 @@ impl Render for PropsView {
 
 #[cfg(test)]
 mod tests {
-    use super::{ARCHIVE, AtomicBool, NOT_INDEXED, Path, READONLY, attrs_from, is_pe, is_root, merge_attrs, signable, walk};
+    use super::{ARCHIVE, AtomicBool, NOT_INDEXED, Path, READONLY, attrs_from, drive_letter, is_pe, is_root, merge_attrs, signable, walk};
+
+    #[test]
+    fn a_path_knows_its_drive_letter() {
+        assert_eq!(drive_letter(Path::new(r"C:\Users\x")), Some('C'));
+        assert_eq!(drive_letter(Path::new(r"d:\a.txt")), Some('D'));
+        assert_eq!(drive_letter(Path::new(r"\\?\E:\long\path")), Some('E'));
+        assert_eq!(drive_letter(Path::new(r"\\server\share\x")), None, "a network path has no drive letter");
+        assert_eq!(drive_letter(Path::new("relative")), None);
+    }
 
     #[test]
     fn attribute_tristates_merge() {

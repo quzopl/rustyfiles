@@ -2034,4 +2034,5 @@ pub const EN: &[(&str, &str)] = &[
     ("öğe karşılaştırıldı", "items compared"),
     ("kopyalanıyor; bitince yeniden karşılaştırılacak", "copying; the folders are compared again when it is done"),
     ("tarama yarıda kaldı", "the scan was stopped"),
+    ("Sürücü", "Drive"),
 ];

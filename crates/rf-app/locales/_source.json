@@ -12094,5 +12094,11 @@
   "key": "kopyalanıyor; bitince yeniden karşılaştırılacak",
   "tr": "kopyalanıyor; bitince yeniden karşılaştırılacak",
   "en": "copying; the folders are compared again when it is done"
+ },
+ {
+  "id": "4f28c954",
+  "key": "Sürücü",
+  "tr": "Sürücü",
+  "en": "Drive"
  }
 ]
