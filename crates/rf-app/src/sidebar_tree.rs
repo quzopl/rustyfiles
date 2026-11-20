@@ -253,6 +253,7 @@ impl SidebarTree {
         });
         // drives come and go: the roots follow the sidebar's own list of places
         let sub = cx.observe(&places, |t, _, cx| t.refresh_roots(cx));
+        let tags_sub = cx.observe_global::<crate::tags::Tags>(|_, cx| cx.notify());
         let mut this = Self {
             model: NavTree::new(),
             places,
@@ -279,7 +280,7 @@ impl SidebarTree {
             wanted: HashSet::new(),
             tx,
             _rx_task: task,
-            _subs: vec![sub],
+            _subs: vec![sub, tags_sub],
         };
         this.refresh_roots(cx);
         this
@@ -519,6 +520,25 @@ impl SidebarTree {
         self.apply_key(k, cx);
     }
 
+    /// The keyboard came to the tree with Tab (issue 38: "the selected item should be made visible (jump to item) or if no item is
+    /// selected, select the first"): the keyboard's row, else the open folder's, else the first, is brought into view and is where
+    /// the arrows start.
+    pub(super) fn keyboard_entered(&mut self, cx: &mut Context<Self>) {
+        let row = self
+            .model
+            .cursor_row()
+            .or_else(|| self.model.marked_row().map(|(r, _)| r))
+            .or_else(|| (!self.model.rows().is_empty()).then_some(0));
+        let Some(row) = row else { return };
+        if self.model.cursor_row().is_none()
+            && let Some(id) = self.model.rows().get(row).map(|r| r.id)
+        {
+            self.model.set_cursor(id);
+        }
+        self.goal = Some(Goal { row, centre: false, tries: 2 });
+        cx.notify();
+    }
+
     fn apply_key(&mut self, k: TreeKey, cx: &mut Context<Self>) {
         let r = self.model.key(k, self.now());
         self.start_loads(r.loads, cx);
@@ -674,6 +694,7 @@ impl SidebarTree {
                 self.images.update(cx, |c, cx| c.icon(&dir, &e, cx))
             })
             .flatten();
+        let tag_dot = info.path.parent().and_then(|_| crate::tags::first_color(info.path, cx));
         let icon_color = match root {
             Some(RootKind::Profile) => p.accent,
             Some(_) => p.text_secondary,
@@ -739,10 +760,17 @@ impl SidebarTree {
                         this.toggle(id, cx);
                     })),
             )
-            .child(match own_icon {
-                Some(picture) => img(picture).size(px(16.)).flex_shrink_0().into_any_element(),
-                None => Icon::new(Self::row_icon(root, expanded)).size(px(16.)).text_color(icon_color).flex_shrink_0().into_any_element(),
-            })
+            .child(
+                div()
+                    .relative()
+                    .size(px(16.))
+                    .flex_shrink_0()
+                    .child(match own_icon {
+                        Some(picture) => img(picture).size(px(16.)).into_any_element(),
+                        None => Icon::new(Self::row_icon(root, expanded)).size(px(16.)).text_color(icon_color).into_any_element(),
+                    })
+                    .when_some(tag_dot, |d, c| d.child(crate::tags::corner_dot(c, p.card_bg))),
+            )
             .child(
                 div()
                     .flex_1()
@@ -908,6 +936,13 @@ impl Workspace {
         (self.sidebar_open && self.shows_tree(self.sidebar_rail)).then(|| self.side_tree.view.as_ref().map(|v| v.read(cx).focus.clone())).flatten()
     }
 
+    /// The keyboard came to the tree with Tab: see `SidebarTree::keyboard_entered`.
+    pub(super) fn tree_keyboard_entered(&mut self, cx: &mut Context<Self>) {
+        if let Some(t) = self.side_tree.view.clone() {
+            t.update(cx, |t, cx| t.keyboard_entered(cx));
+        }
+    }
+
     pub(super) fn set_tree_peek(&mut self, peek: bool) {
         self.side_tree.in_peek = peek;
     }
@@ -927,7 +962,10 @@ impl Workspace {
             TreeEvent::Menu(path) => self.sidebar_menu(path.clone(), window, cx),
             // from the keyboard: not the physical Shift key's classic menu, and next to the row, not at the mouse
             TreeEvent::KeyMenu(path, at) => self.sidebar_menu_at(path.clone(), false, *at, window, cx),
-            TreeEvent::Leave => self.focus_active(window, cx),
+            TreeEvent::Leave => {
+                self.focus_active(window, cx);
+                self.active_tab().clone().update(cx, |v, cx| v.keyboard_entered(cx));
+            }
         }
     }
 

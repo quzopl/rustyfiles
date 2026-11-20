@@ -1829,6 +1829,13 @@ fn section(p: &Palette, title: &'static str) -> AnyElement {
     div().pt_1().pb(px(2.)).text_xs().font_weight(FontWeight::SEMIBOLD).text_color(p.text_secondary).child(title).into_any_element()
 }
 
+/// Width budget for the title bar's own content so `gpui_kit::TitleBar` (whose internal `#bar`
+/// never shrinks below its child's width) does not push the window buttons off the right edge.
+fn title_bar_content_width(viewport_w: f32) -> f32 {
+    let reserved = if cfg!(target_os = "macos") { 100. } else { 130. };
+    (viewport_w - reserved).max(80.)
+}
+
 fn note(p: &Palette, text: &str) -> AnyElement {
     div().text_xs().text_color(p.text_secondary).child(text.to_string()).into_any_element()
 }
@@ -1979,9 +1986,9 @@ impl Render for PropsView {
             (None, None) => Icon::new(if self.paths.len() > 1 { L::Files } else { L::File }).size(px(40.)).text_color(p.text_secondary).into_any_element(),
         };
         let name: AnyElement = match (&self.name, &self.drive) {
-            (_, Some(d)) => div().flex_1().text_base().font_weight(FontWeight::SEMIBOLD).child(d.display_name()).into_any_element(),
+            (_, Some(d)) => div().flex_1().min_w_0().text_base().font_weight(FontWeight::SEMIBOLD).child(d.display_name()).into_any_element(),
             (Some(n), None) => text_field(&p, n),
-            (None, None) => div().flex_1().text_base().font_weight(FontWeight::SEMIBOLD).child(crate::i18n::items(self.paths.len())).into_any_element(),
+            (None, None) => div().flex_1().min_w_0().text_base().font_weight(FontWeight::SEMIBOLD).child(crate::i18n::items(self.paths.len())).into_any_element(),
         };
 
         // tabs (they wrap onto a second row when many, as Windows' do)
@@ -2052,6 +2059,7 @@ impl Render for PropsView {
                 .child(label)
         };
         let dirty = self.dirty(cx);
+        let bar_w = title_bar_content_width(f32::from(window.viewport_size().width));
 
         v_flex()
             .size_full()
@@ -2068,7 +2076,17 @@ impl Render for PropsView {
                     .h(theme::TITLEBAR_H)
                     .bg(p.titlebar_bg)
                     .border_color(gpui_kit::transparent_black())
-                    .child(h_flex().gap_2().items_center().text_xs().child(Icon::new(L::Info).size(px(14.))).child(title.clone())),
+                    .child(
+                        h_flex()
+                            .w(px(bar_w))
+                            .min_w_0()
+                            .overflow_hidden()
+                            .gap_2()
+                            .items_center()
+                            .text_xs()
+                            .child(Icon::new(L::Info).size(px(14.)).flex_shrink_0())
+                            .child(div().flex_1().min_w_0().truncate().child(title.clone())),
+                    ),
             )
             .child(
                 v_flex()
@@ -2080,7 +2098,7 @@ impl Render for PropsView {
                     .pt_2()
                     .pb_4()
                     .gap_4()
-                    .child(h_flex().gap_3().items_center().child(div().size(px(48.)).flex().items_center().justify_center().child(icon)).child(name))
+                    .child(h_flex().gap_3().items_center().child(div().size(px(48.)).flex_shrink_0().flex().items_center().justify_center().child(icon)).child(name))
                     .when(show_tabs, |d| d.child(tabs))
                     .children(body),
             )
@@ -2106,7 +2124,7 @@ impl Render for PropsView {
 
 #[cfg(test)]
 mod tests {
-    use super::{ARCHIVE, AtomicBool, NOT_INDEXED, Path, READONLY, attrs_from, drive_letter, is_pe, is_root, merge_attrs, signable, walk};
+    use super::{ARCHIVE, AtomicBool, NOT_INDEXED, Path, READONLY, attrs_from, drive_letter, is_pe, is_root, merge_attrs, signable, title_bar_content_width, walk};
 
     #[test]
     fn a_path_knows_its_drive_letter() {
@@ -2115,6 +2133,13 @@ mod tests {
         assert_eq!(drive_letter(Path::new(r"\\?\E:\long\path")), Some('E'));
         assert_eq!(drive_letter(Path::new(r"\\server\share\x")), None, "a network path has no drive letter");
         assert_eq!(drive_letter(Path::new("relative")), None);
+    }
+
+    #[test]
+    fn title_bar_content_leaves_room_for_window_controls() {
+        assert_eq!(title_bar_content_width(500.0), 370.0);
+        assert_eq!(title_bar_content_width(420.0), 290.0);
+        assert_eq!(title_bar_content_width(150.0), 80.0);
     }
 
     #[test]

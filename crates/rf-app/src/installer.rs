@@ -55,21 +55,14 @@ fn after_install_or_update() {
     if rf_win::dialogs::starts_with_windows_as("DirectLook") {
         let _ = rf_win::dialogs::set_start_with_windows_as("DirectLook", &me.with_file_name("directlook.exe"), &["--background"], true);
     }
-    if rf_win::dialog_reg::is_enabled(rf_win::dialog_reg::CLASSES) {
-        if let Some(dll) = crate::dialog_dll() {
-            rf_win::dialog_reg::point_to(&dll, rf_win::dialog_reg::CLASSES);
-        }
-    }
+    let _ = crate::dialog_registration(crate::DialogReg::Follow);
 }
 
 /// A fresh install turns on rustyfiles' Open/Save dialogs (per user, no admin rights; Settings →
 /// Advanced turns them off). Updates don't, so someone who turned them off keeps them off.
 fn dialogs_on_by_default() {
-    let classes = rf_win::dialog_reg::CLASSES;
-    if !rf_win::dialog_reg::is_enabled(classes) {
-        if let Some(dll) = crate::dialog_dll() {
-            let _ = rf_win::dialog_reg::enable(&dll, classes);
-        }
+    if !rf_win::dialog_reg::is_enabled(rf_win::dialog_reg::CLASSES) {
+        let _ = crate::dialog_registration(crate::DialogReg::Enable);
     }
 }
 
@@ -426,6 +419,20 @@ pub fn count_start(cx: &mut gpui_kit::App) {
 #[cfg(test)]
 mod tests {
     use super::{DAY_MS, donate_answered, donate_due, is_beta, star_due, takes_betas};
+
+    /// Manual, needs the network: the update source's TLS setup (vendor/velopack: Windows' certificate store, issue 121) reaches
+    /// GitHub. `cargo test -p rf-app --lib installer::tests::github_answers_through_the_windows_store -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn github_answers_through_the_windows_store() {
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .tls_config(ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build())
+            .build()
+            .into();
+        let body = agent.get("https://api.github.com/repos/gelenmedya/rustyfiles/releases?per_page=1").call().unwrap().body_mut().read_to_string().unwrap();
+        println!("{} bytes", body.len());
+        assert!(body.contains("releases.win.json"));
+    }
 
     #[test]
     fn a_beta_is_a_version_with_a_pre_release_part() {

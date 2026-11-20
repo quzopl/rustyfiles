@@ -33,6 +33,7 @@ pub enum Page {
     Actions,
     Tags,
     Look,
+    Ferry,
     Dev,
     Advanced,
     Speed,
@@ -40,7 +41,7 @@ pub enum Page {
     About,
 }
 
-const PAGES: [(Page, L, &str); 15] = [
+const PAGES: [(Page, L, &str); 16] = [
     (Page::General, L::Settings, "Genel"),
     (Page::Appearance, L::Palette, "Görünüm"),
     (Page::Dock, L::PanelBottom, "Dock"),
@@ -51,6 +52,7 @@ const PAGES: [(Page, L, &str); 15] = [
     (Page::Actions, L::Keyboard, "Eylemler"),
     (Page::Tags, L::Tag, "Etiketler"),
     (Page::Look, L::Eye, "DirectLook"),
+    (Page::Ferry, L::Send, "Ferry"),
     (Page::Dev, L::SquareTerminal, "Geliştirici araçları"),
     (Page::Advanced, L::Wrench, "Gelişmiş"),
     (Page::Speed, L::Gauge, "Hız testi"),
@@ -61,7 +63,7 @@ const PAGES: [(Page, L, &str); 15] = [
 /// The pages that are experimental: marked with a small "Deneysel" pill in the page list and "(deneysel)" in their title. The mark is
 /// NOT part of the page name in [`PAGES`], so the search and the translations still know the pages as "Dock" and "Masaüstü".
 fn experimental(page: Page) -> bool {
-    matches!(page, Page::Dock | Page::Desktop)
+    matches!(page, Page::Dock | Page::Desktop | Page::Ferry)
 }
 
 /// The heading of a page: its name, and "(deneysel)" after it for an experimental page.
@@ -123,6 +125,45 @@ thread_local! {
     static COLLECT_AT: std::cell::Cell<(Page, Option<&'static str>)> = const { std::cell::Cell::new((Page::General, None)) };
 }
 
+thread_local! {
+    /// The setting a search result was picked for (issue 126): its row is marked, and the page is scrolled to it once.
+    static FIND: std::cell::RefCell<Option<FindTarget>> = const { std::cell::RefCell::new(None) };
+    /// The settings page's scroll, for that one scroll (set by every [`render`]).
+    static PAGE_SCROLL: std::cell::RefCell<Option<ScrollHandle>> = const { std::cell::RefCell::new(None) };
+}
+
+struct FindTarget {
+    title: String,
+    scrolled: bool,
+}
+
+/// How long the picked setting's row stays marked.
+const FIND_MARK_FOR: std::time::Duration = std::time::Duration::from_millis(1600);
+
+/// A setting's row as drawn: when a search result was picked for it, with a soft accent wash, and the page scrolled (at its first paint)
+/// so that the row stands near the top.
+fn found_mark(title: &str, p: &Palette, row: Div) -> Div {
+    if collecting() || !FIND.with(|f| f.borrow().as_ref().is_some_and(|t| t.title == title)) {
+        return row;
+    }
+    row.relative().rounded(theme::RADIUS).bg(p.accent.opacity(0.18)).child(
+        canvas(
+            |_, _, _| (),
+            |bounds, _, window, _| {
+                let first = FIND.with(|f| f.borrow_mut().as_mut().is_some_and(|t| !std::mem::replace(&mut t.scrolled, true)));
+                if let (true, Some(scroll)) = (first, PAGE_SCROLL.with(|s| s.borrow().clone())) {
+                    let (view, offset) = (scroll.bounds(), scroll.offset());
+                    let y = offset.y - (bounds.top() - view.top() - px(24.));
+                    scroll.set_offset(point(offset.x, y.min(px(0.))));
+                    window.refresh();
+                }
+            },
+        )
+        .absolute()
+        .size_full(),
+    )
+}
+
 fn collecting() -> bool {
     COLLECT.with(|c| c.borrow().is_some())
 }
@@ -178,9 +219,10 @@ fn build_page(page: Page, p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyEle
         Page::Layout => layout(p, s, cx),
         Page::Files => files(p, s, cx),
         Page::FileTypes => crate::open_rules_page::page(p, s),
-        Page::Actions => actions(p, cx),
+        Page::Actions => actions(p, s, cx),
         Page::Tags => tags(p, cx),
         Page::Look => look(p, s, cx),
+        Page::Ferry => crate::ferry::page(p, s, cx),
         Page::Dev => dev(p, s, cx),
         Page::Advanced => advanced(p, s, cx),
         Page::Speed => crate::bench_view::page(p, cx),
@@ -284,7 +326,8 @@ pub(crate) fn beside(control: AnyElement) -> Div {
 
 pub(crate) fn card_body(p: &Palette, icon: L, title: SharedString, desc: Option<SharedString>, control: Option<AnyElement>) -> Div {
     note_setting(&title, desc.as_deref());
-    h_flex()
+    let marked = title.clone();
+    let row = h_flex()
         .min_h(px(64.))
         .px_4()
         .py_3()
@@ -309,7 +352,8 @@ pub(crate) fn card_body(p: &Palette, icon: L, title: SharedString, desc: Option<
                         .children(desc.map(|d| div().text_xs().text_color(p.text_secondary).child(d))),
                 ),
         )
-        .children(control.map(beside))
+        .children(control.map(beside));
+    found_mark(&marked, p, row)
 }
 
 pub(crate) fn shell(p: &Palette) -> Div {
@@ -360,7 +404,7 @@ fn expander(key: &'static str, p: &Palette, icon: L, title: &str, desc: Option<&
 /// A child row inside an expander (no icon, indented like Files).
 fn sub(p: &Palette, title: &str, desc: Option<&str>, control: AnyElement) -> AnyElement {
     note_setting(title, desc);
-    h_flex()
+    let row = h_flex()
         .min_h(px(48.))
         .pl(px(56.))
         .pr_4()
@@ -376,8 +420,8 @@ fn sub(p: &Palette, title: &str, desc: Option<&str>, control: AnyElement) -> Any
                 .child(div().text_sm().child(title.to_string()))
                 .children(desc.map(|d| div().text_xs().text_color(p.text_secondary).child(d.to_string()))),
         )
-        .child(beside(control))
-        .into_any_element()
+        .child(beside(control));
+    found_mark(title, p, row).into_any_element()
 }
 
 pub(crate) fn section(p: &Palette, title: &str) -> AnyElement {
@@ -402,9 +446,10 @@ fn link_row(p: &Palette, id: &'static str, icon: L, title: &str, desc: Option<&s
 // ---------------------------------------------------------------- page
 
 /// `lens_owner`: this page owns the window's settings lens (see `FolderView::lens_owner`); only then is the selected entry glass.
-pub fn render(p: &Palette, window: &mut Window, cx: &mut App, lens_owner: bool) -> AnyElement {
+pub fn render(p: &Palette, window: &mut Window, cx: &mut App, lens_owner: bool, scroll: &ScrollHandle) -> AnyElement {
     use gpui_kit::component::input::{Input, InputState};
     let page = ui(cx).page;
+    PAGE_SCROLL.with(|h| *h.borrow_mut() = Some(scroll.clone()));
     let s = cx.global::<Settings>().clone();
     let search = match ui(cx).search.clone() {
         Some(e) => e,
@@ -477,6 +522,10 @@ pub fn render(p: &Palette, window: &mut Window, cx: &mut App, lens_owner: bool) 
                 }),
         );
     }
+    // (Ferry's page on screen shows this PC to everyone while it is: `ferry::page_seen`)
+    if query.is_empty() && page == Page::Ferry {
+        crate::ferry::page_seen(window.window_handle(), cx);
+    }
     let (title, body): (String, Vec<AnyElement>) = if query.is_empty() {
         (PAGES.iter().find(|x| x.0 == page).map(|x| page_title(x.0, crate::i18n::t(x.2))).unwrap_or_default(), build_page(page, p, &s, cx))
     } else {
@@ -486,7 +535,7 @@ pub fn render(p: &Palette, window: &mut Window, cx: &mut App, lens_owner: bool) 
             rows.push(div().py_4().text_sm().text_color(p.text_secondary).child(t!("Eşleşen ayar yok")).into_any_element());
         }
         for (i, f) in found.into_iter().enumerate() {
-            let (pg, key) = (f.page, f.expander);
+            let (pg, key, target) = (f.page, f.expander, f.title.clone());
             let page_label = PAGES.iter().find(|x| x.0 == pg).map(|x| crate::i18n::t(x.2)).unwrap_or_default();
             let search = search.clone();
             rows.push(
@@ -499,6 +548,17 @@ pub fn render(p: &Palette, window: &mut Window, cx: &mut App, lens_owner: bool) 
                         if let Some(k) = key {
                             ui(cx).open.insert(k);
                         }
+                        // the page opens scrolled to the setting, which is marked for a moment (issue 126)
+                        FIND.with(|f| *f.borrow_mut() = Some(FindTarget { title: target.clone(), scrolled: false }));
+                        window
+                            .spawn(cx, async move |cx| {
+                                cx.background_executor().timer(FIND_MARK_FOR).await;
+                                let _ = cx.update(|window, _| {
+                                    FIND.with(|f| *f.borrow_mut() = None);
+                                    window.refresh();
+                                });
+                            })
+                            .detach();
                         search.update(cx, |s, cx| s.set_value("", window, cx));
                         window.refresh();
                     })
@@ -552,17 +612,30 @@ pub fn render(p: &Palette, window: &mut Window, cx: &mut App, lens_owner: bool) 
         )
         .child(nav)
         .child(
-            div().id("settings-page").flex_1().min_w_0().h_full().overflow_y_scroll().child(
-                v_flex()
-                    .w_full()
-                    .max_w(px(980.))
-                    .px_6()
-                    .pt_5()
-                    .pb_8()
-                    .gap_2()
-                    .child(div().pb_2().text_xl().font_weight(FontWeight::SEMIBOLD).child(title))
-                    .children(body),
-            ),
+            // the page scrolls with a scrollbar over its right edge (issue 86: on Windows 10 nothing showed there was more below)
+            div()
+                .relative()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .child(
+                    div().id("settings-page").size_full().overflow_y_scroll().track_scroll(scroll).child(
+                        v_flex()
+                            .w_full()
+                            .max_w(px(980.))
+                            .px_6()
+                            .pt_5()
+                            .pb_8()
+                            .gap_2()
+                            .child(div().pb_2().text_xl().font_weight(FontWeight::SEMIBOLD).child(title))
+                            .children(body),
+                    ),
+                )
+                .child(
+                    gpui_kit::component::scroll::Scrollbar::vertical(scroll)
+                        .id("settings-scrollbar")
+                        .mode(crate::folder_view::scrollbar_mode()),
+                ),
         )
         .into_any_element()
 }
@@ -734,7 +807,34 @@ fn general(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
         },
         cx,
     ));
+    v.push(card(
+        p,
+        L::Plus,
+        t!("Yeni sekme şunu açar"),
+        Some(t!("Ctrl+T, + düğmesi ve sekme menüsü. Sekmeyi çoğalt (Ctrl+Shift+K) her zaman aynı klasörü açar.")),
+        dropdown(
+            "new-tab-opens",
+            p,
+            s.new_tab_opens,
+            vec![(crate::settings::NewTabOpens::Home, t!("Ana sayfa").to_string()), (crate::settings::NewTabOpens::Current, t!("Açık olan klasör").to_string())],
+            |s, v| s.new_tab_opens = v,
+        ),
+    ));
     v.push(card(p, L::SquarePlus, t!("Her zaman yeni açılan sekmeye geç"), None, sw("focus-tab", p, s.focus_new_tab, |s, v| s.focus_new_tab = v)));
+    v.push(card(
+        p,
+        L::AppWindow,
+        t!("Diğer programlardan açılan klasörler yeni pencerede açılsın"),
+        Some(t!("Win+E, masaüstü ya da başka bir program bir klasör açtığında açık pencerede yeni sekme yerine yeni bir pencere açılır.")),
+        sw("launch-newwin", p, s.launch_in_new_window, |s, v| s.launch_in_new_window = v),
+    ));
+    v.push(card(
+        p,
+        L::Save,
+        t!("Kayıtlı oturumlar bu pencerede açılsın"),
+        Some(t!("Sekme menüsünden açılan oturum, yeni pencere yerine bu penceredeki sekmelerin yerini alır (kapanan sekmeler Ctrl+Shift+T ile geri gelir).")),
+        sw("session-here", p, s.sessions_in_this_window, |s, v| s.sessions_in_this_window = v),
+    ));
 
     v.push(section(p, t!("Çift bölme")));
     v.push(card(p, L::Columns2, t!("Yeni sekmeleri çift bölmeyle aç"), None, sw("dual-new", p, s.dual_pane_new_tabs, |s, v| s.dual_pane_new_tabs = v)));
@@ -764,7 +864,7 @@ fn general(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
         None,
         move || {
             type Set = fn(&mut Settings, bool);
-            let rows: [(&str, bool, Set); 9] = [
+            let rows: [(&str, bool, Set); 10] = [
                 (t!("Yeni sekmede aç"), m.open_in_new_tab, |s, v| s.menu.open_in_new_tab = v),
                 (t!("Yeni pencerede aç"), m.open_in_new_window, |s, v| s.menu.open_in_new_window = v),
                 (t!("Öğe yolunu kopyala"), m.copy_path, |s, v| s.menu.copy_path = v),
@@ -774,6 +874,7 @@ fn general(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
                 (t!("Etiketler"), m.tags, |s, v| s.menu.tags = v),
                 (t!("Rafa ekle"), m.shelf, |s, v| s.menu.shelf = v),
                 (t!("Terminalde aç"), m.terminal, |s, v| s.menu.terminal = v),
+                (t!("Gönder"), m.send_to, |s, v| s.menu.send_to = v),
             ];
             rows.into_iter()
                 .enumerate()
@@ -877,6 +978,44 @@ fn hidden_drives_card(p: &Palette, s: &Settings) -> AnyElement {
     )
 }
 
+/// The cloud and WSL places hidden from the sidebar one by one (its menu: "Hide this place"): a click shows one again.
+fn hidden_places_card(p: &Palette, s: &Settings) -> AnyElement {
+    let mut row = h_flex().flex_wrap().gap_2().items_center().justify_end();
+    for (i, path) in s.hidden_places.iter().enumerate() {
+        let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.clone());
+        let key = path.clone();
+        row = row.child(
+            h_flex()
+                .id(("place-hide", i))
+                .h(px(28.))
+                .px_2p5()
+                .gap_1p5()
+                .items_center()
+                .rounded(theme::RADIUS_SM)
+                .border_1()
+                .border_color(p.accent)
+                .bg(p.hover)
+                .text_sm()
+                .text_color(p.text_secondary)
+                .cursor_pointer()
+                .hover(|d| d.bg(p.pressed))
+                .child(Icon::new(L::EyeOff).size(px(14.)))
+                .child(name)
+                .on_click(move |_, _, cx| {
+                    let key = key.clone();
+                    settings::update(cx, move |s| s.hidden_places.retain(|h| *h != key))
+                }),
+        );
+    }
+    card(
+        p,
+        L::Cloud,
+        t!("Gizlenen bulut ve Linux konumları"),
+        Some(t!("Kenar çubuğunda tek tek gizlediğiniz konumlar. Birine tıklayınca yeniden görünür.")),
+        row.into_any_element(),
+    )
+}
+
 /// The colours offered for the accent (Fluent's own set): blue, purple, magenta, red, orange, yellow, green, teal, grey.
 pub(crate) const ACCENT_CHOICES: [u32; 9] = [0x0078D4, 0x8764B8, 0xE3008C, 0xE81123, 0xF7630C, 0xFFB900, 0x107C10, 0x00B7C3, 0x69797E];
 
@@ -960,10 +1099,18 @@ fn backdrop_card(p: &Palette, s: &Settings) -> AnyElement {
             (BackdropPref::Glass, t!("HyperGlass (deneysel)").into()),
         ]
     } else {
-        vec![(BackdropPref::Solid, t!("Düz").into())]
+        // Windows 10: Acrylic and HyperGlass for the main window only (issue 78); Mica left the window see-through there
+        vec![
+            (BackdropPref::Solid, t!("Düz").into()),
+            (BackdropPref::Acrylic, t!("Akrilik").into()),
+            (BackdropPref::Glass, t!("HyperGlass (deneysel)").into()),
+        ]
     };
     let control = dropdown("backdrop", p, s.backdrop_in_use(), choices, |s, v| s.backdrop = v);
     let mut notes: Vec<String> = Vec::new();
+    if !crate::settings::materials_available() && s.backdrop_in_use() != BackdropPref::Solid {
+        notes.push(t!("Bu Windows sürümünde malzeme yalnızca ana pencereye uygulanır; menüler ve açılır pencereler düz kalır.").to_string());
+    }
     if s.backdrop_in_use() == BackdropPref::Glass || crate::glass::forced() {
         notes.push(t!("Pencerenin arkasındaki görüntüyü gerçek cam gibi büker ve buzlar. Ekranı canlı izleyip her değişiklikte yeniden çizdiği için Mica'dan daha fazla ekran kartı ve pil kullanır.").to_string());
         // Only where the windows really are hidden from screenshots: with a capture session (Windows 11 24H2 and the border-free capture
@@ -1346,6 +1493,20 @@ fn appearance(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
         accent_card(p, s),
         card(
             p,
+            L::AppWindow,
+            t!("Sekmeler adları kadar geniş"),
+            Some(t!("Kapalıyken bütün sekmeler eşit genişlikte. Açıkken her sekme adına göre genişler, en az 72 ve en çok 220 piksel.")),
+            sw("tabs-fit", p, s.tabs_fit_names, |s, v| s.tabs_fit_names = v),
+        ),
+        card(
+            p,
+            L::SquareTerminal,
+            t!("Sekmelerde terminal düğmesi"),
+            Some(t!("Her klasör sekmesinde, o klasörde bir terminal açan düğme.")),
+            sw("tab-terminal", p, s.tab_terminal_button, |s, v| s.tab_terminal_button = v),
+        ),
+        card(
+            p,
             L::Activity,
             t!("Animasyonlar"),
             Some(t!("Sekme açılırken ve kapanırken kısa geçişler. Hiçbir işi geciktirmez.")),
@@ -1477,7 +1638,6 @@ fn appearance(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
                 .collect()
         }),
     ));
-    v.push(card(p, L::PanelTop, t!("Araç çubuğunu göster"), Some("Ctrl+Shift+B"), sw("toolbar", p, s.show_toolbar, |s, v| s.show_toolbar = v)));
     v.push(card(p, L::PanelBottom, t!("Durum çubuğunu göster"), None, sw("statusbar", p, s.show_statusbar, |s, v| s.show_statusbar = v)));
     v.push(card(p, L::PanelRight, t!("Önizleme paneli"), Some("Alt+P"), sw("preview", p, s.preview_open, |s, v| s.preview_open = v)));
     v.push(card(
@@ -1492,6 +1652,13 @@ fn appearance(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
             vec![(rf_core::previewpane::PreviewPos::Right, t!("Sağda").into()), (rf_core::previewpane::PreviewPos::Bottom, t!("Altta").into())],
             |s, v| s.preview_position = v,
         ),
+    ));
+    v.push(card(
+        p,
+        L::Info,
+        t!("Önizlemede dosya bilgileri"),
+        Some(t!("Önizlemenin altında türü, boyutu, tarihleri ve konumu gösterir")),
+        sw("preview-details", p, s.preview_details, |s, v| s.preview_details = v),
     ));
     let hidden = s.sidebar_hidden.clone();
     let libs = s.show_libraries;
@@ -1538,6 +1705,9 @@ fn appearance(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
         cx,
     ));
     let (bar_hidden, bar_extra) = (s.toolbar_hidden.clone(), s.toolbar_extra.clone());
+    let commands = s.toolbar_commands.clone();
+    // the switch and the buttons it shows stand together (issue 111)
+    v.push(card(p, L::PanelTop, t!("Araç çubuğunu göster"), Some("Ctrl+Shift+B"), sw("toolbar", p, s.show_toolbar, |s, v| s.show_toolbar = v)));
     v.push(expander(
         "toolbar-buttons",
         p,
@@ -1565,7 +1735,7 @@ fn appearance(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
                 ("view", "tb-view", "Görünüm", false),
                 ("preview", "tb-preview", "Önizleme paneli", false),
             ];
-            BUTTONS
+            let mut rows: Vec<_> = BUTTONS
                 .iter()
                 .map(|&(key, id, label, optional)| {
                     let shown = if optional { bar_extra.iter().any(|k| k == key) } else { !bar_hidden.iter().any(|k| k == key) };
@@ -1585,7 +1755,18 @@ fn appearance(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
                         }),
                     )
                 })
-                .collect()
+                .collect();
+            rows.extend(commands.into_iter().enumerate().map(|(i, command)| {
+                sub(&pp, command.name(), Some(&command.program), crate::quick_commands::controls(i, command.clone(), &pp).into_any_element())
+            }));
+            let add = crate::i18n::tx("Komut ekle", "Add command");
+            rows.push(sub(
+                &pp,
+                crate::i18n::tx("Özel komutlar", "Custom commands"),
+                None,
+                button("add-quick-command", &pp, add, |window, cx| crate::quick_commands::edit(None, window, cx)),
+            ));
+            rows
         },
         cx,
     ));
@@ -1832,6 +2013,13 @@ fn files(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
     ));
     v.push(card(p, L::TriangleAlert, t!("Uzantı değişince uyar"), None, sw("ext-warn", p, s.warn_extension_change, |s, v| s.warn_extension_change = v)));
     v.push(card(p, L::MousePointer, t!("Üzerine gelince seç"), None, sw("hover-sel", p, s.select_on_hover, |s, v| s.select_on_hover = v)));
+    v.push(card(
+        p,
+        L::ListFilter,
+        t!("Yazınca bu klasörü süz"),
+        Some(t!("Kapalıyken yazmak, adı o harflerle başlayan öğeyi seçer.")),
+        sw("type-filter", p, s.type_to_filter, |s, v| s.type_to_filter = v),
+    ));
     v.push(card(p, L::ArrowUp, t!("Boş alana çift tıklayınca üst klasöre çık"), None, sw("dbl-up", p, s.double_click_up, |s, v| s.double_click_up = v)));
     v.push(card(p, L::FolderUp, t!("Yukarı çıkınca önceki klasörü seç"), None, sw("prev-sel", p, s.select_previous_on_up, |s, v| s.select_previous_on_up = v)));
     v.push(card(
@@ -1923,6 +2111,9 @@ fn files(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
     // Files' folder aliases: "@name" in the address box
     v.push(section(p, t!("Sürücüler")));
     v.push(hidden_drives_card(p, s));
+    if !s.hidden_places.is_empty() {
+        v.push(hidden_places_card(p, s));
+    }
     v.push(section(p, t!("Klasör takma adları")));
     let aliases: Vec<(String, std::path::PathBuf)> = s.folder_aliases.iter().map(|(n, p)| (n.clone(), p.clone())).collect();
     let count = aliases.len();
@@ -1961,7 +2152,7 @@ fn files(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
     v
 }
 
-fn actions(p: &Palette, cx: &mut App) -> Vec<AnyElement> {
+fn actions(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
     let mut grid = div().px_4().py_3().flex().flex_wrap().gap_x_6().gap_y_0p5();
     let capturing = crate::keymap_editor::capturing(cx);
     let entries = crate::command_palette::shortcut_entries();
@@ -2047,6 +2238,13 @@ fn actions(p: &Palette, cx: &mut App) -> Vec<AnyElement> {
         );
     }
     vec![
+        card(
+            p,
+            L::Clock,
+            t!("Komut paletinde geçmiş klasörleri göster"),
+            Some(t!("Yazdıkça daha önce gidilen klasörler komutlarla birlikte listelenir. Ctrl+P her zaman yalnızca geçmiş klasörlerde arar.")),
+            sw("palette-folders", p, s.palette_folder_history, |s, v| s.palette_folder_history = v),
+        ),
         shell(p)
             .child(card_body(
                 p,
@@ -2279,6 +2477,19 @@ fn look(p: &Palette, s: &Settings, cx: &mut App) -> Vec<AnyElement> {
             }
         }),
     )];
+    // QuickLook instead (asked on Discord): shown with DirectLook off too, as that is how it is meant to be used
+    let ql = s.space_quicklook;
+    v.push(card(
+        p,
+        L::ScanEye,
+        t!("Boşluk QuickLook'u açsın"),
+        Some(if crate::quicklook::installed() {
+            t!("Dosyalar QuickLook'a gönderilir ve açık önizleme seçimi izler. DirectLook'u yukarıdan kapatabilirsiniz.")
+        } else {
+            t!("QuickLook kurulu değil: Microsoft Store'dan ya da GitHub'dan (QL-Win/QuickLook) kurulabilir.")
+        }),
+        switch("space-ql", p, ql, move |_, cx| settings::update(cx, |s| s.space_quicklook = !ql)),
+    ));
     if !enabled {
         return v;
     }
@@ -2657,11 +2868,7 @@ fn advanced(p: &Palette, s: &Settings, cx: &App) -> Vec<AnyElement> {
             }
             std::thread::spawn(move || {
                 let classes = rf_win::dialog_reg::CLASSES;
-                let r = match (dialogs_on, crate::dialog_dll()) {
-                    (true, _) => rf_win::dialog_reg::disable(classes),
-                    (false, Some(dll)) => rf_win::dialog_reg::enable(&dll, classes),
-                    (false, None) => Ok(()),
-                };
+                let r = if dialogs_on { rf_win::dialog_reg::disable(classes) } else { crate::dialog_registration(crate::DialogReg::Enable).map(|_| ()) };
                 if let Err(e) = r {
                     log::warn!("file dialogs: {e:#}");
                 }
@@ -3180,10 +3387,10 @@ mod desktop_page_tests {
     }
 
     #[test]
-    fn both_experimental_pages_are_marked_and_the_mark_is_not_part_of_their_names() {
+    fn the_experimental_pages_are_marked_and_the_mark_is_not_part_of_their_names() {
         crate::dock_page::while_turkish(|| {
             let exp: Vec<Page> = PAGES.iter().map(|x| x.0).filter(|p| experimental(*p)).collect();
-            assert_eq!(exp, [Page::Dock, Page::Desktop], "exactly these two");
+            assert_eq!(exp, [Page::Dock, Page::Desktop, Page::Ferry], "exactly these");
             for (page, _, name) in PAGES {
                 let title = page_title(page, name);
                 if experimental(page) {

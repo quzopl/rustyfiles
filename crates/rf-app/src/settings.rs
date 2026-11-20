@@ -264,6 +264,8 @@ pub struct MenuPrefs {
     pub tags: bool,
     pub shelf: bool,
     pub terminal: bool,
+    /// Explorer's "Send to" (the SendTo folder's entries and the drives) in the first menu. Issue 117.
+    pub send_to: bool,
     /// Shell extensions under "Show more options" (off = listed at the bottom of the menu).
     pub shell_submenu: bool,
 }
@@ -280,6 +282,7 @@ impl Default for MenuPrefs {
             tags: true,
             shelf: true,
             terminal: true,
+            send_to: true,
             shell_submenu: true,
         }
     }
@@ -313,6 +316,14 @@ pub struct ColumnPrefs {
     /// then nothing of the property columns runs and the file has no such key.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub properties: Vec<String>,
+    /// The Name column's width once a divider was dragged (issue 135: dividers work as in Explorer, the columns stand from the left
+    /// and the room left over is at the right end). 0: the Name column takes whatever the others leave, as before any drag.
+    #[serde(skip_serializing_if = "is_zero_u16")]
+    pub name_width: u16,
+}
+
+fn is_zero_u16(v: &u16) -> bool {
+    *v == 0
 }
 
 impl Default for ColumnPrefs {
@@ -333,6 +344,7 @@ impl Default for ColumnPrefs {
             git_hash: false,
             git_widths: [240, 130, 140, 90],
             properties: Vec::new(),
+            name_width: 0,
         }
     }
 }
@@ -384,6 +396,12 @@ pub struct Settings {
     pub default_view: DefaultView,
     pub show_hidden: bool,
     pub preview_open: bool,
+    /// The preview pane of the Open/Save dialogs, kept apart from the main windows' (shown until it is closed once: issue 87).
+    pub picker_preview_open: bool,
+    /// The Open/Save dialog's size as the user left it (logical px), as Windows' own dialogs remember theirs. Issue 89: "the size of
+    /// the file selection window ... is too large for a standard 1920x1080 px laptop screen".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picker_size: Option<[u16; 2]>,
     pub sidebar_open: bool,
     /// The sidebar as a narrow strip of icons (drag it narrow to get there).
     pub sidebar_rail: bool,
@@ -406,6 +424,8 @@ pub struct Settings {
     /// Buttons of the command bar that are off unless asked for ("newfolder", "terminal",
     /// "hidden", "refresh").
     pub toolbar_extra: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub toolbar_commands: Vec<crate::quick_commands::QuickCommand>,
     pub preview_width: f32,
     /// Where the preview pane sits: at the right of the list (the default) or under it. The key is written only for "bottom".
     #[serde(skip_serializing_if = "rf_core::previewpane::PreviewPos::is_right")]
@@ -413,6 +433,9 @@ pub struct Settings {
     /// The pane's height at the bottom (drag its top edge). Written only once the user has moved it.
     #[serde(skip_serializing_if = "is_default_preview_height")]
     pub preview_height: f32,
+    /// The file's details under its preview (type, size, dates, location, the hash button). Asked for on the rustyfiles Discord: "Hope
+    /// the Properties can have an option to hide".
+    pub preview_details: bool,
     pub renderer: RendererPref,
     pub restore_session: bool,
     /// Last session's tab locations ("" = Home).
@@ -430,6 +453,10 @@ pub struct Settings {
     /// The drives that are not listed (the sidebar, the Home page, the address bar's list of drives), as letters ("V"). A drive
     /// Explorer hides by its own policy is hidden too, without being named here (`rf_win::drives::visible_drives`).
     pub hidden_drives: Vec<String>,
+    /// Cloud and WSL places taken off the sidebar one by one (their paths). Issue 141: "a way to hide a single entry in that section
+    /// (right click > Hide), like "Hidden drives"".
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hidden_places: Vec<String>,
     /// The accent colour of rustyfiles as "#RRGGBB"; empty: Windows' own accent (Settings > Appearance).
     pub accent_color: String,
     /// The user's own programs for kinds of files (Settings > File types; `rf_core::openrules`): the first program of a list opens
@@ -467,6 +494,8 @@ pub struct Settings {
     pub keybindings: std::collections::BTreeMap<String, String>,
     /// Last window placement: [x, y, width, height, maximized (0/1)].
     pub window: Option<[f32; 5]>,
+    /// Display UUID and the normal window's origin relative to that display.
+    pub window_display: Option<(String, [f32; 2])>,
 
     // ---- General
     pub date_format: DatePref,
@@ -474,6 +503,15 @@ pub struct Settings {
     pub startup_pages: Vec<String>,
     /// Switch to tabs opened with Ctrl+click / middle click / "Open in new tab".
     pub focus_new_tab: bool,
+    /// What a new tab opens (Ctrl+T, the "+" button, the tab menu): Home (the default) or the folder of the tab in front (a Reddit
+    /// suggestion, 2026-11-18). Duplicating a tab keeps its folder either way.
+    pub new_tab_opens: NewTabOpens,
+    /// A folder opened from outside (Win+E, the desktop, another program) gets a window of its own instead of a tab in the newest
+    /// window (issue 77). Off by default.
+    pub launch_in_new_window: bool,
+    /// A saved session opened from the tab menu takes the place of this window's tabs (they can be reopened, Ctrl+Shift+T) instead of
+    /// opening a new window (issue 41). Off by default.
+    pub sessions_in_this_window: bool,
     /// New tabs start split in two panes.
     pub dual_pane_new_tabs: bool,
     /// Dual pane side by side (true) or stacked (false).
@@ -528,6 +566,13 @@ pub struct Settings {
     pub confirm_delete: DeletePref,
     pub warn_extension_change: bool,
     pub select_on_hover: bool,
+    /// Each tab as wide as its name (within the usual limits) instead of all tabs equally wide. Issue 119.
+    pub tabs_fit_names: bool,
+    /// The terminal button on each folder's tab. Issue 119: it was in the way of clicks on narrow tabs.
+    pub tab_terminal_button: bool,
+    /// Typing in a folder's list filters it by name (the filter bar opens with the letters); off: typing selects the item whose
+    /// name starts with them. Issue 106.
+    pub type_to_filter: bool,
     pub double_click_up: bool,
     pub select_previous_on_up: bool,
     pub decimal_sizes: bool,
@@ -577,6 +622,8 @@ pub struct Settings {
     // ---- DirectLook (Hızlı Bakış, ayrı program): ayarları kendi dosyasında (`look::config`)
     /// DirectLook kullanılsın mı (kapalıyken rustyfiles onu başlatmaz, Boşluk bir şey yapmaz).
     pub directlook_enabled: bool,
+    /// Space hands the file to QuickLook (QL-Win) instead of DirectLook (`quicklook`).
+    pub space_quicklook: bool,
 
     // ---- Quick search (quick_search.rs)
     /// A global shortcut opens the quick search: apps, files, bookmarks, the web.
@@ -589,6 +636,9 @@ pub struct Settings {
     /// With nothing typed, HyperSearch lists what was opened lately; off: it shows nothing until something is typed (issue 41:
     /// "Add an option to show/hide recent searches").
     pub quick_search_recent: bool,
+    /// The command palette (Ctrl+Shift+P) lists past folders among the commands once something is typed (`folder_history`). Off:
+    /// commands only; Ctrl+P still searches past folders.
+    pub palette_folder_history: bool,
 
     // ---- Dock (dock/: `rustyfiles --dock`, a separate process; experimental)
     /// The dock runs: started with rustyfiles and when this is switched on, stopped when it is switched off.
@@ -623,17 +673,24 @@ pub struct Settings {
     /// The left and the right island are as tall as the middle one (off: they are lower, as they always were). While the dock is thin
     /// under a maximised window all three are the thin height either way.
     pub dock_side_tall: bool,
+    /// The dock hides at the bottom of the screen and comes up when the pointer reaches the edge (off; issue 112). It reserves no
+    /// band then: windows use the whole screen.
+    pub dock_autohide: bool,
+    /// The dock's islands on a solid fill instead of the glass (off; issue 113).
+    pub dock_opaque: bool,
+    /// A thin "Show desktop" strip at the right end of the primary monitor's right island, after the bell, as on Windows' taskbar (off;
+    /// issue 127).
+    pub dock_show_desktop: bool,
     /// The left island's search: a field, its button only, or none (`DockSearch`).
     pub dock_search: DockSearch,
+    /// A click on the dock's search field or button opens HyperSearch instead of the Start panel (issue 41). Off by default.
+    pub dock_search_hypersearch: bool,
     /// The tray icons of the right island stand closer together (18 px a cell instead of 24; off). Issue 34.
     pub dock_tray_compact: bool,
     /// Turning the mouse wheel over a running app's icon in the dock turns that app's own sound level up or down (on; issue 21).
     pub dock_scroll_volume: bool,
     /// How much the dock's icons grow under the pointer (off / subtle / full).
     pub dock_magnify: DockMagnify,
-    /// The growth snaps to the icon under the pointer and slides from icon to icon (`magnify::Glide`); off: it follows the pointer
-    /// smoothly, as the Mac's does. On by default (the owner, 2026-11-17: "ikon ikon daha clicky hissettirebilir mi").
-    pub dock_magnify_snap: bool,
     /// Resting the pointer on a running app's icon in the dock shows a preview of its windows (on; the dock itself is opt-in). Off: nothing.
     pub dock_hover_previews: bool,
     /// A right click on an app's icon in the dock opens the dock's own app menu (on). Off: it does nothing, as before.
@@ -700,6 +757,38 @@ pub struct Settings {
     /// All four corners of every monitor, black behind them (`rf_core::desktop::corners` for the bottom pixel row). An experiment
     /// the user asked for, to go with the dock's round islands.
     pub desktop_corner_radius: u8,
+
+    // ---- Ferry (sending files to rustyfiles on the network's other devices; Settings -> "Ferry"; crates/rf-nearby and ferry.rs)
+    /// Ferry runs in the main process (off by default: it listens on a network port, and Windows' firewall may ask about that).
+    pub ferry_enabled: bool,
+    /// Who sees this PC: nobody, its trusted devices (the default), or everyone. "Everyone" lasts ten minutes and a start reads it as
+    /// trusted devices.
+    pub ferry_visibility: FerryVisibility,
+    /// The name the other devices show for this PC; empty: the PC's own name.
+    pub ferry_name: String,
+    /// Where received files go; empty: the Downloads folder.
+    pub ferry_inbox: String,
+    /// Files from a trusted device are taken without asking, into the folder above (on).
+    pub ferry_auto_accept_trusted: bool,
+}
+
+/// Settings -> General: what a new tab opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum NewTabOpens {
+    #[default]
+    Home,
+    Current,
+}
+
+/// Settings -> Ferry: who sees this PC.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum FerryVisibility {
+    Off,
+    #[default]
+    Trusted,
+    Everyone,
 }
 
 impl Default for Settings {
@@ -710,6 +799,8 @@ impl Default for Settings {
             default_view: DefaultView::Adaptive,
             show_hidden: false,
             preview_open: true,
+            picker_preview_open: true,
+            picker_size: None,
             sidebar_open: true,
             sidebar_rail: false,
             sidebar_width: 232.,
@@ -719,6 +810,7 @@ impl Default for Settings {
             search_history: Vec::new(),
             toolbar_hidden: Vec::new(),
             toolbar_extra: Vec::new(),
+            toolbar_commands: Vec::new(),
             preview_width: 300.,
             preview_position: rf_core::previewpane::PreviewPos::Right,
             preview_height: rf_core::previewpane::BOTTOM_DEFAULT_H,
@@ -731,6 +823,7 @@ impl Default for Settings {
             pinned: None,
             folder_aliases: Default::default(),
             hidden_drives: Vec::new(),
+            hidden_places: Vec::new(),
             accent_color: String::new(),
             open_rules: Vec::new(),
             run_in_background: false,
@@ -748,10 +841,14 @@ impl Default for Settings {
             show_extensions: true,
             keybindings: Default::default(),
             window: None,
+            window_display: None,
             date_format: DatePref::Application,
             startup: StartupPref::Continue,
             startup_pages: Vec::new(),
             focus_new_tab: false,
+            new_tab_opens: NewTabOpens::Home,
+            launch_in_new_window: false,
+            sessions_in_this_window: false,
             dual_pane_new_tabs: false,
             dual_pane_vertical: true,
             menu: MenuPrefs::default(),
@@ -787,6 +884,10 @@ impl Default for Settings {
             confirm_delete: DeletePref::PermanentOnly,
             warn_extension_change: true,
             select_on_hover: false,
+            tabs_fit_names: false,
+            tab_terminal_button: true,
+            preview_details: true,
+            type_to_filter: false,
             double_click_up: true,
             select_previous_on_up: true,
             decimal_sizes: false,
@@ -809,12 +910,14 @@ impl Default for Settings {
             ide_button: IdePref::GitRepos,
             ide_path: String::new(),
             show_flatten: false,
+            space_quicklook: false,
             directlook_enabled: true,
             quick_search: true,
             quick_search_keys: "alt-space".into(),
             web_search: WebSearch::Google,
             quick_search_bookmarks: true,
             quick_search_recent: true,
+            palette_folder_history: true,
             dock_enabled: false,
             dock_reserve: true,
             dock_weather_city: String::new(),
@@ -827,11 +930,14 @@ impl Default for Settings {
             dock_status_order: Vec::new(),
             dock_status_hidden: Vec::new(),
             dock_side_tall: false,
+            dock_autohide: false,
+            dock_opaque: false,
+            dock_show_desktop: false,
             dock_search: DockSearch::Field,
+            dock_search_hypersearch: false,
             dock_tray_compact: false,
             dock_scroll_volume: true,
             dock_magnify: DockMagnify::Full,
-            dock_magnify_snap: true,
             dock_hover_previews: true,
             dock_app_menu: true,
             dock_thin_when_maximized: true,
@@ -857,6 +963,11 @@ impl Default for Settings {
             desktop_icon_control_panel: Default::default(),
             desktop_show_icons: Default::default(),
             desktop_corner_radius: 0,
+            ferry_enabled: false,
+            ferry_visibility: FerryVisibility::Trusted,
+            ferry_name: String::new(),
+            ferry_inbox: String::new(),
+            ferry_auto_accept_trusted: true,
         }
     }
 }
@@ -871,6 +982,9 @@ static THEME: AtomicU8 = AtomicU8::new(0);
 /// The surface value (0..=100) the palette reads on every call, cheaper than the settings struct.
 static HG_SURFACE: AtomicU8 = AtomicU8::new(HG_DEFAULT[4]);
 static SOLID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// The chosen material is one a Windows without materials can still give the MAIN window (Acrylic, HyperGlass): see
+/// [`main_window_only`].
+static MAIN_ONLY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 static ANIM: AtomicU8 = AtomicU8::new(0);
 
@@ -887,7 +1001,15 @@ pub fn animations() -> bool {
 /// "Solid" background material: the palette paints an opaque window background. Also on a Windows without materials, whatever the
 /// setting says and in every process (a side process that never loads these settings asks too).
 pub fn solid_backdrop() -> bool {
-    SOLID.load(Ordering::Relaxed) || !materials_available()
+    SOLID.load(Ordering::Relaxed) || (!materials_available() && !MAIN_ONLY.load(Ordering::Relaxed))
+}
+
+/// The materials a Windows without Windows 11's materials (Windows 10) still gives the MAIN window: Acrylic, as the old blur behind
+/// it, and HyperGlass, which rustyfiles draws itself. Menus and popups stay plain there, since the blur-behind of a popup covered its
+/// whole frame (issue 24). Mica is not among them: there it left the window see-through. Issue 78: a Windows 10 user found Acrylic
+/// right on their PC and asked for it and HyperGlass back.
+pub fn main_window_only(b: BackdropPref) -> bool {
+    matches!(b, BackdropPref::Acrylic | BackdropPref::Glass)
 }
 
 /// Whether Windows gives windows a material (Mica, Mica Alt, Acrylic): from Windows 11 22H2 on (`rf_win::osver`, issue 24). Where it
@@ -1001,7 +1123,7 @@ impl Settings {
     /// The material the windows really have: the chosen one, or "Solid" on a Windows without materials. The setting itself is left
     /// as it is (the same file may be read on a Windows 11 later).
     pub fn backdrop_in_use(&self) -> BackdropPref {
-        if materials_available() { self.backdrop } else { BackdropPref::Solid }
+        if materials_available() || main_window_only(self.backdrop) { self.backdrop } else { BackdropPref::Solid }
     }
 
     /// Brings settings written by older versions up to date.
@@ -1112,6 +1234,7 @@ impl Settings {
         });
         rf_core::format::set_decimal_sizes(self.decimal_sizes);
         SOLID.store(self.backdrop == BackdropPref::Solid, Ordering::Relaxed);
+        MAIN_ONLY.store(main_window_only(self.backdrop), Ordering::Relaxed);
         ANIM.store(self.animations as u8, Ordering::Relaxed);
         // HyperGlass: the engine redraws every glass window once when the look changes, and does nothing for the same look again
         HG_SURFACE.store(self.hg_surface.min(100), Ordering::Relaxed);
@@ -1187,6 +1310,8 @@ pub fn update(cx: &mut App, f: impl FnOnce(&mut Settings)) {
         // after the save: the dock process reads the file when it is told to reload
         crate::dock::control::sync_process(&s);
     });
+    // (Ferry follows its settings: started, stopped, started anew, or shown to others differently)
+    crate::ferry::apply(cx);
     cx.refresh_windows();
 }
 
@@ -1303,6 +1428,10 @@ pub fn local_data_dir() -> Option<std::path::PathBuf> {
     if let Some(d) = std::env::var_os("RUSTYFILES_CONFIG_DIR").filter(|d| !d.is_empty()) {
         return Some(std::path::PathBuf::from(d));
     }
+    // the portable copy keeps everything in its own folder (issue 71)
+    if let Some(d) = rf_win::portable::data_dir() {
+        return Some(d);
+    }
     dirs::data_local_dir().map(|d| d.join("rustyfiles"))
 }
 
@@ -1310,6 +1439,10 @@ pub fn local_data_dir() -> Option<std::path::PathBuf> {
 pub fn app_dir() -> Option<std::path::PathBuf> {
     if let Some(d) = std::env::var_os("RUSTYFILES_CONFIG_DIR").filter(|d| !d.is_empty()) {
         return Some(std::path::PathBuf::from(d));
+    }
+    // the portable copy: its own `data` folder (`rf_win::portable`, issue 71)
+    if let Some(d) = rf_win::portable::data_dir() {
+        return Some(d);
     }
     dirs::config_dir().map(|d| d.join("rustyfiles"))
 }
@@ -1461,8 +1594,8 @@ fn sync_name_index(on: bool, excluded: &[String]) {
             return;
         }
         // a copy with its own settings folder (tests, portable) keeps its index there too
-        let dir = match std::env::var_os("RUSTYFILES_CONFIG_DIR") {
-            Some(cfg) => std::path::PathBuf::from(cfg).join("index"),
+        let dir = match std::env::var_os("RUSTYFILES_CONFIG_DIR").map(std::path::PathBuf::from).or_else(rf_win::portable::data_dir) {
+            Some(cfg) => cfg.join("index"),
             None => std::env::var_os("LOCALAPPDATA").map_or_else(std::env::temp_dir, std::path::PathBuf::from).join("rustyfiles").join("index"),
         };
         // RUSTYFILES_INDEX_ROOTS="E:\;F:\" picks the roots (testing)

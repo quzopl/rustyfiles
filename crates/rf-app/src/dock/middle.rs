@@ -1,4 +1,4 @@
-//! The middle island, the dock itself: the apps pinned to the Windows taskbar in the taskbar's order, then the other running apps,
+﻿//! The middle island, the dock itself: the apps pinned to the Windows taskbar in the taskbar's order, then the other running apps,
 //! a thin separator, the Recycle Bin and the Downloads folder. Icons are 44 px at rest. With the pointer over the dock they grow like
 //! the Mac's dock (`rf_win::dock::magnify`): by a smooth bell of the distance from the pointer to each icon's rest centre, up to 1.55
 //! times for the one under it (a setting: off / subtle 1.25 / full 1.55), standing on one baseline so they grow UP, over the glass's top
@@ -120,10 +120,14 @@ pub struct MiddleIsland {
     /// Where the pointer last was over the dock (logical px from the REST island's left edge); `None` before it first came. It stays
     /// where it was when the pointer leaves, so the bell shrinks away in place.
     pointer_x: Option<f32>,
-    /// Where the bell stands when it snaps to the icons (`dock_magnify_snap`), and the x the last frame was drawn with (a press
-    /// holds that one).
-    snap: magnify::Glide,
+    /// The x the last frame was drawn with (a press holds that one).
     bell_x: Option<f32>,
+    /// Files from another program are being dragged over the island: the magnification follows them (their moves come as drag moves,
+    /// not as mouse moves), and it goes when the drag ends or leaves.
+    drag_over: bool,
+    /// The app icon files are being held over, and the wait after which its window comes forward (as the Windows taskbar does: the
+    /// files can then be let go in the window). `None`: not over a running app.
+    drag_raise: Option<(usize, gpui_kit::Task<()>)>,
     /// The height of the bell over time (0 away, 1 over the dock).
     presence: Presence,
     /// Clock of the animation.
@@ -179,6 +183,8 @@ pub struct MiddleIsland {
     last_slots: Vec<(f32, f32)>,
     /// The look at Escape and the buttons while an icon is in the hand.
     drag_watch: Option<gpui_kit::Task<()>>,
+    /// The apps (keys) that have a window asking for attention: their icon carries a dot (`rf_win::dock::attention`).
+    wanting: Vec<String>,
 }
 
 impl MiddleIsland {
@@ -230,8 +236,9 @@ impl MiddleIsland {
             levels_peak: 0.0,
             icon_gen: 0,
             pointer_x: None,
-            snap: magnify::Glide::default(),
             bell_x: None,
+            drag_over: false,
+            drag_raise: None,
             presence: Presence::new(plan::hover_duration(crate::settings::animations())),
             t0: Instant::now(),
             reported: 0.0,
@@ -258,6 +265,7 @@ impl MiddleIsland {
             right: reorder::RightGuard::default(),
             last_slots: Vec::new(),
             drag_watch: None,
+            wanting: Vec::new(),
         };
         // (the app menu tells it when the dock's own pin list changed)
         super::own_pins::register(cx.entity().downgrade(), cx);
@@ -329,6 +337,13 @@ impl MiddleIsland {
         // (the task list comes in Z order; the island's order must not follow the clicks)
         let groups = model::keep_order(&mut self.seen_order, groups);
         let items = model::merge(&self.pins, groups, foreground);
+        let wanting = wanting_attention(&items);
+        let attention_changed = wanting != self.wanting;
+        self.wanting = wanting;
+        if attention_changed && items == self.items {
+            cx.notify();
+            return;
+        }
         if items == self.items {
             // Most task-list events change nothing the island shows (a window that only moved, was shown again, took the focus within
             // the same app: 26 of 28 refreshes in a minute of ordinary use). Every `notify` asks for a frame, and a frame keeps the
@@ -716,7 +731,50 @@ impl MiddleIsland {
 
     /// Files let go on an icon: an app opens them (`rf_win::dock::launch::open_files`), from a thread of their own; a running app the
     /// dock cannot start is given them through the program of its window. Anything else (a place) takes no files.
+    /// Files are held over the icon `ix` (`over`) or have left it. Over a running app that is not in front, its window comes forward after
+    /// `RAISE_WAIT_MS` there.
+    fn drag_over_icon(&mut self, ix: usize, over: bool, cx: &mut Context<Self>) {
+        const RAISE_WAIT_MS: u64 = 700;
+        if !over {
+            if self.drag_raise.as_ref().is_some_and(|(i, _)| *i == ix) {
+                self.drag_raise = None;
+            }
+            return;
+        }
+        if self.drag_raise.as_ref().is_some_and(|(i, _)| *i == ix) {
+            return;
+        }
+        let Some(DockItem::App(app)) = self.items.get(ix) else {
+            self.drag_raise = None;
+            return;
+        };
+        if app.windows.is_empty() {
+            self.drag_raise = None;
+            return;
+        }
+        let task = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_millis(RAISE_WAIT_MS)).await;
+            let _ = this.update(cx, |me, cx| {
+                // (still over it, and the files still in the hand)
+                if !me.drag_raise.as_ref().is_some_and(|(i, _)| *i == ix) || !cx.has_active_drag() {
+                    return;
+                }
+                let Some(DockItem::App(app)) = me.items.get(ix) else { return };
+                let foreground = rf_win::dock::foreground_root();
+                if let rf_win::dock::ClickAction::Raise(h) = model::click_action(&app.windows, foreground) {
+                    std::thread::spawn(move || rf_win::dock::launch::activate(h));
+                }
+            });
+        });
+        self.drag_raise = Some((ix, task));
+    }
+
     fn files_dropped(&mut self, ix: usize, files: Vec<std::path::PathBuf>, cx: &mut Context<Self>) {
+        // (the drag is over: the magnification that followed it goes)
+        if std::mem::take(&mut self.drag_over) {
+            self.pointer_left(cx);
+        }
+        self.drag_raise = None;
         let Some(DockItem::App(app)) = self.items.get(ix).cloned() else { return };
         if files.is_empty() {
             return;
@@ -733,6 +791,14 @@ impl MiddleIsland {
             }
         });
         cx.notify();
+    }
+
+    /// Win+1 .. Win+9 (issue 91): the `n`-th app of the island (pinned or running; the places and the separator do not count), as a
+    /// click on its icon: it starts, comes to the front, or goes down when it is in front, as on Windows' taskbar.
+    pub(super) fn open_app_number(&mut self, n: usize, cx: &mut Context<Self>) {
+        if let Some(ix) = nth_app(&self.items, n) {
+            self.click(ix, cx);
+        }
     }
 
     fn click(&mut self, ix: usize, cx: &mut Context<Self>) {
@@ -832,11 +898,13 @@ impl MiddleIsland {
             return true;
         }
         let now = self.now_ms();
-        // (the bell is held, but where the pointer is stays known: when the icon is let go the bell goes on from there)
-        self.pointer_x = Some((f32::from(ev.position.x) - host::insets_on(self.mon, Kind::Middle, cx).margins[0]) / k);
-        if let Some(d) = self.drag.as_mut()
-            && d.moved(x, y, self.last_glass, &self.last_slots, now)
-        {
+        // the magnification follows the icon in the hand as it follows the pointer (the owner: "docktaki ikonlarıda drag drop ile
+        // yerlerini değiştirirken olsun büyüme"); it was held where the button went down
+        let bx = (f32::from(ev.position.x) - host::insets_on(self.mon, Kind::Middle, cx).margins[0]) / k;
+        let bell_moved = self.pointer_x.is_none_or(|old| (old - bx).abs() > 0.25);
+        self.pointer_x = Some(bx);
+        let slid = self.drag.as_mut().is_some_and(|d| d.moved(x, y, self.last_glass, &self.last_slots, now));
+        if slid || bell_moved {
             cx.notify();
         }
         true
@@ -847,6 +915,8 @@ impl MiddleIsland {
         let dur = if crate::settings::animations() { reorder::SLIDE_MS } else { 0 };
         let Some(drag) = reorder::Drag::begin(reorder::kinds(&self.items), ix, x, &self.last_slots, dur) else { return };
         self.drag = Some(drag);
+        // (the bell no longer stays where the button went down: it follows the icon in the hand)
+        self.frozen = None;
         self.settle = None;
         self.swallow_click = true;
         self.pressed_ix = None;
@@ -1016,6 +1086,12 @@ impl Render for MiddleIsland {
         // the palette follows the tone (what is behind the glass), the fill below it is the island's own while the glass is not running
         let (pal, fallback) = super::host::frame_palette(&self.glass, window);
         let strength = cx.global::<Settings>().dock_magnify.strength();
+        // (a file drag that ended or left the window without a drop on an icon: the magnification it held goes)
+        if self.drag_over && !cx.has_active_drag() {
+            self.drag_over = false;
+            self.drag_raise = None;
+            self.pointer_left(cx);
+        }
         let now = self.now_ms();
         if !self.presence.settled(now) && self.frozen.is_none() {
             // the bell is still coming in or going out: one more frame
@@ -1057,30 +1133,13 @@ impl Render for MiddleIsland {
             Some((x, h)) => (Some(x), h),
             None => (self.pointer_x, self.presence.value(now)),
         };
-        // snapping to the icons: the bell stands on the nearest icon's centre and slides to the next one (`magnify::Glide`); once the
-        // bell has gone, it forgets where it stood, so the next time it comes in where the pointer does
-        let snap_on = cx.global::<Settings>().dock_magnify_snap;
-        if !self.presence.is_in() && self.presence.settled(now) {
-            self.snap.reset();
-        }
-        let pointer = match (pointer, self.frozen.is_none() && snap_on) {
-            (Some(x), true) => {
-                if let Some(target) = magnify::snap_target(&self.slots, &rest, x) {
-                    let pace = if crate::settings::animations() { magnify::SNAP_MS } else { 0 };
-                    self.snap.aim(target, now, pace);
-                }
-                if self.snap.moving(now) {
-                    window.request_animation_frame();
-                }
-                Some(if self.snap.is_set() { self.snap.value(now) } else { x })
-            }
-            (p, _) => p,
-        };
         self.bell_x = pointer;
         // (no bell while the dock is thin; it comes in with the growth)
         let height = sq.bell(height);
         let frame = match pointer {
-            Some(x) if height > 0.0 && strength != magnify::Strength::Off => magnify::frame(&self.slots, &rest, rest_width, x, height, strength, rest_width + 2.0 * inset.growth),
+            Some(x) if height > 0.0 && strength != magnify::Strength::Off => {
+                magnify::frame(&self.slots, &rest, rest_width, x, height, strength, rest_width + 2.0 * inset.growth)
+            }
             _ => Frame::at_rest(&rest, rest_width),
         };
         let pic = super::thin::picture(&frame, &self.slots, inset.margins, BASELINE, &sq);
@@ -1213,6 +1272,8 @@ impl Render for MiddleIsland {
                         DockItem::App(a) => (a.running(), a.active),
                         _ => (false, false),
                     };
+                    // an app whose window asks for attention (Discord on a message): a dot at the icon's top right, inside its box
+                    let wants = matches!(item, DockItem::App(a) if self.wanting.contains(&a.key));
                     // the app's sound level, while the wheel has just been turned over this icon
                     let hud = match (item, &self.vol_hud) {
                         (DockItem::App(a), Some(h)) if h.key == a.key => Some(vol_hud_look(h.level)),
@@ -1257,6 +1318,20 @@ impl Render for MiddleIsland {
                                     .child(div().mt(u(w * 0.03)).w(u(bar)).h(u(w * 0.05)).rounded_full().bg(track).child(div().h_full().w(u(bar * fill)).rounded_full().bg(ink))),
                             )
                         })
+                        .when(wants, |d| {
+                            let r = (w * 0.26).clamp(7.0, 14.0);
+                            d.child(
+                                div()
+                                    .absolute()
+                                    .top(u(0.0))
+                                    .right(u(0.0))
+                                    .size(u(r))
+                                    .rounded_full()
+                                    .bg(look::attention_dot().hsla())
+                                    .border(u((r * 0.14).max(1.0)))
+                                    .border_color(gpui::hsla(0., 0., 1., 0.9)),
+                            )
+                        })
                         // the running mark; under an app that is being started it is the starting mark, which pulses until the app has a window
                         .when(running || mark.is_some() || failed, |d| {
                             let wide = in_front && running;
@@ -1281,6 +1356,11 @@ impl Render for MiddleIsland {
                         // files dragged from anywhere and let go on an app: the app opens them (issue 41); the icon takes the dock's
                         // quiet highlight while they are over it
                         .drag_over::<ExternalPaths>(move |s, _, _, _| s.bg(drop_fill))
+                        // files held over a running app bring its window forward after a moment, to be let go there (the owner, trying
+                        // it: "videoyu telegrama sürükledim telegram hiç öne gelmedi")
+                        .on_drag_move::<ExternalPaths>(cx.listener(move |me, ev: &DragMoveEvent<ExternalPaths>, _, cx| {
+                            me.drag_over_icon(ix, ev.bounds.contains(&ev.event.position), cx)
+                        }))
                         .on_drop(cx.listener(move |me, paths: &ExternalPaths, _, cx| me.files_dropped(ix, paths.paths().to_vec(), cx)))
                         .on_hover(cx.listener(move |me, on: &bool, _, cx| me.item_hover(ix, *on, cx)))
                         .on_mouse_up(MouseButton::Right, cx.listener(move |me, _, _, cx| me.right_click(ix, cx)))
@@ -1349,14 +1429,63 @@ impl Render for MiddleIsland {
                             me.pointer_left(cx);
                         }
                     }))
+                    // files dragged over the dock: the icons grow under them as under the pointer (the owner: "sürükleme yaparken
+                    // büyüme animasyonu devam etsin")
+                    .on_drag_move::<ExternalPaths>(cx.listener(move |me, ev: &DragMoveEvent<ExternalPaths>, _, cx| {
+                        if !ev.bounds.contains(&ev.event.position) {
+                            if std::mem::take(&mut me.drag_over) {
+                                me.pointer_left(cx);
+                            }
+                            return;
+                        }
+                        me.drag_over = true;
+                        let strength = cx.global::<Settings>().dock_magnify.strength();
+                        let k = host::size_on(mon, cx);
+                        super::thin::pointer_on_island(mon, cx);
+                        me.pointer_moved((f32::from(ev.event.position.x) - host::insets_on(mon, Kind::Middle, cx).margins[0]) / k, strength, false, cx)
+                    }))
                     .children(cells),
             )
     }
 }
 
+/// The keys of the apps that have a window asking for attention.
+fn wanting_attention(items: &[DockItem]) -> Vec<String> {
+    items
+        .iter()
+        .filter_map(|i| match i {
+            DockItem::App(a) if a.windows.iter().any(|h| rf_win::dock::attention::wants(*h)) => Some(a.key.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The index of the `n`-th app among the island's items (0-based; places and separators are skipped).
+fn nth_app(items: &[DockItem], n: usize) -> Option<usize> {
+    items.iter().enumerate().filter(|(_, i)| matches!(i, DockItem::App(_))).nth(n).map(|(ix, _)| ix)
+}
+
 #[cfg(test)]
 mod tests {
+    use super::nth_app;
     use super::{BASELINE, L, vol_hud_look, DOT_DROP, DockItem, ICON_REST, MIN_MOVE, Place, Slot, Task, icon_count, item_icons, look, magnify, model, move_needs_frame, plan};
+
+    /// Win+1 .. Win+9 count the apps only, as Windows' taskbar counts its buttons.
+    #[test]
+    fn the_nth_app_skips_the_places_and_the_separator() {
+        let items = model::merge(&[], Vec::new(), 0);
+        // (an island with nothing running and nothing pinned has only the separator and the two places)
+        assert_eq!(nth_app(&items, 0), None);
+        let running = vec![
+            ("a".to_string(), vec![Task { hwnd: 1, title: "A".into(), pid: 1, exe: None, app_id: Some("a".into()), minimized: false }]),
+            ("b".to_string(), vec![Task { hwnd: 2, title: "B".into(), pid: 2, exe: None, app_id: Some("b".into()), minimized: false }]),
+        ];
+        let items = model::merge(&[], running, 0);
+        let apps: Vec<usize> = (0..3).filter_map(|n| nth_app(&items, n)).collect();
+        assert_eq!(apps.len(), 2);
+        assert!(apps.iter().all(|&ix| matches!(items[ix], DockItem::App(_))));
+        assert!(apps[0] < apps[1]);
+    }
 
     /// The level on an icon: the number the volume mixer shows, a symbol that follows it, and a bar; a muted app's bar is empty, and an
     /// app with no sound says so without a number.

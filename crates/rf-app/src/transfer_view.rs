@@ -380,8 +380,14 @@ pub(crate) fn strip(ops: &Entity<Ops>, p: &Palette, avail: f32, cx: &App) -> Opt
             let ops = ops.clone();
             icon_button(("strip-cancel", id as usize), p, L::X, t!("İptal"), move |_, cx| ops.update(cx, |o, cx| o.cancel_op(id, cx)))
         };
+        // the copy stands still until this is answered: an accent-tinted bar, not a status line like the others (issue 95: the
+        // question went unseen and the copy "would not begin")
         return Some(
             frame
+                .bg(p.accent.opacity(0.14))
+                .border_1()
+                .border_color(p.accent.opacity(0.45))
+                .rounded(theme::RADIUS_SM)
                 .child(
                     main()
                         .child(Icon::new(L::CircleAlert).size(px(14.)).text_color(p.accent))
@@ -444,8 +450,9 @@ pub(crate) fn strip(ops: &Entity<Ops>, p: &Palette, avail: f32, cx: &App) -> Opt
                     .when(fit.text, |d| d.child(words(text, p.text)))
                     .child(bar(p, v.frac, accent, Some(96.)))
                     .child(div().w(px(36.)).flex_shrink_0().text_right().text_color(p.text).child(pct))
-                    .children(speed.map(|s| div().flex_shrink_0().child(s)))
-                    .children(eta.map(|s| div().flex_shrink_0().child(s))),
+                    // (fixed widths: the speed and the time change every moment, and the strip must not shake)
+                    .children(speed.map(|s| div().w(px(xfer::SPEED_W)).flex_shrink_0().text_right().whitespace_nowrap().child(s)))
+                    .children(eta.map(|s| div().w(px(xfer::ETA_W)).flex_shrink_0().whitespace_nowrap().overflow_hidden().text_ellipsis().child(s))),
             )
             .when(fit.buttons, |d| d.child(pause).child(cancel))
             .when(fit.chip, |d| d.child(chip))

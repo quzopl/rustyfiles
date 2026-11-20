@@ -7,6 +7,7 @@ pub mod bench;
 mod fast_start;
 mod bench_view;
 mod donate;
+mod ferry;
 mod archive_view;
 mod bulk_rename;
 mod command_palette;
@@ -30,6 +31,7 @@ mod prop_chooser;
 mod hash_panel;
 mod i18n;
 mod i18n_en;
+mod folder_history;
 mod folder_view;
 mod icons;
 mod keymap_editor;
@@ -64,8 +66,11 @@ mod tags;
 mod undo;
 mod preview;
 mod preview_trace;
+mod program_launch;
 mod properties_view;
+mod quick_commands;
 mod quick_search;
+mod quicklook;
 mod run_names;
 mod settings_rows;
 mod search_pipe;
@@ -86,14 +91,52 @@ use rf_core::Location;
 
 use crate::workspace::Workspace;
 
-/// Window placement from the last session (ignored if it is implausibly small).
-pub(crate) fn restored_bounds(cx: &App) -> Option<WindowBounds> {
-    let [x, y, w, h, max] = cx.global::<settings::Settings>().window?;
-    if w < 500. || h < 350. {
+/// Restores the window on its original display, even when displays use different scales.
+fn restored_bounds(cx: &App) -> Option<(WindowBounds, Option<DisplayId>)> {
+    let prefs = cx.global::<settings::Settings>();
+    let values @ [x, y, w, h, max] = prefs.window?;
+    if !values.iter().all(|v| v.is_finite()) || w < 500. || h < 350. {
         return None;
     }
-    let b = Bounds { origin: point(px(x), px(y)), size: size(px(w), px(h)) };
-    Some(if max > 0.5 { WindowBounds::Maximized(b) } else { WindowBounds::Windowed(b) })
+    let mut b = Bounds::new(point(px(x), px(y)), size(px(w), px(h)));
+    let display = if let Some((key, [dx, dy])) = &prefs.window_display {
+        let saved = cx.displays().into_iter().find(|d| d.uuid().is_ok_and(|id| id.to_string() == *key));
+        if let Some(d) = saved.as_ref().cloned().or_else(|| cx.primary_display()) {
+            let origin = saved.filter(|_| dx.is_finite() && dy.is_finite())
+                .map(|d| d.bounds().origin + point(px(*dx), px(*dy)));
+            b = fit_window_bounds(b.size, origin, d.visible_bounds());
+            Some(d.id())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    Some((if max > 0.5 { WindowBounds::Maximized(b) } else { WindowBounds::Windowed(b) }, display))
+}
+
+fn fit_window_bounds(size: Size<Pixels>, origin: Option<Point<Pixels>>, area: Bounds<Pixels>) -> Bounds<Pixels> {
+    let size = gpui_kit::size(size.width.min(area.size.width), size.height.min(area.size.height));
+    let center = area.center() - point(size.width / 2., size.height / 2.);
+    let origin = origin.filter(|&p| area.contains(&Bounds::new(p, size).center())).unwrap_or(center);
+    Bounds::new(origin, size)
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::fit_window_bounds;
+    use gpui_kit::{Bounds, point, px, size};
+
+    #[test]
+    fn restores_negative_coordinates_and_centers_on_the_fallback_screen() {
+        let secondary = Bounds::new(point(px(-1920.), px(0.)), size(px(1920.), px(1040.)));
+        let original = Bounds::new(point(px(-1750.), px(40.)), size(px(1000.), px(700.)));
+        assert_eq!(fit_window_bounds(original.size, Some(original.origin), secondary), original);
+        let primary = Bounds::new(point(px(0.), px(0.)), size(px(1280.), px(720.)));
+        let centered = fit_window_bounds(original.size, None, primary);
+        assert_eq!(centered.center(), primary.center());
+        assert_eq!(centered.size, original.size);
+    }
 }
 
 /// Panics are written to %APPDATA%\rustyfiles\crash.log (the app has no console in release).
@@ -124,17 +167,100 @@ pub static DEFAULT_FM: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 /// rustyfiles answers other apps' Open/Save dialogs (registry state, read off the UI thread).
 pub static FILE_DIALOGS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// The Open/Save dialog DLL to register: a copy of the one next to this exe, outside the
-/// install folder (`%LocalAppData%\rustyfiles\dialog\<build>\`). Apps keep the registered DLL
-/// loaded, and an update can't replace an install folder with a loaded DLL in it. Next to the
-/// copy, `rustyfiles-exe.txt` tells the DLL which rustyfiles to start. Older copies go once no
-/// app has them loaded.
-pub(crate) fn dialog_dll() -> Option<String> {
+/// What [`dialog_registration`] does with the Open/Save dialog registration.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DialogReg {
+    /// Leave it on or off, but while it is on, point it at this build's copy (start-up, after an update).
+    Follow,
+    /// Turn it on (a fresh install, the setting).
+    Enable,
+}
+
+/// Brings the Open/Save dialog registration in line with this build. The registered DLL is a copy of the one next to this exe,
+/// outside the install folder (`%LocalAppData%\rustyfiles\dialog\<build>\`): apps keep it loaded, and an update can't replace an
+/// install folder with a loaded DLL in it. Next to the copy, `rustyfiles-exe.txt` tells the DLL which rustyfiles to start.
+///
+/// The registration must never point at a missing DLL: every app's Open/Save dialog then fails and some apps crash (issue 82). So
+/// the copy registered now is never deleted, all of it runs under a lock every rustyfiles process takes (two builds starting
+/// together, as at an update, deleted each other's copy), and a registration of ours whose DLL is gone, with no copy to point it at
+/// instead, is removed. Returns whether the registration changed.
+pub(crate) fn dialog_registration(mode: DialogReg) -> anyhow::Result<bool> {
+    use rf_win::dialog_reg as reg;
+    let root = PathBuf::from(std::env::var_os("LOCALAPPDATA").ok_or_else(|| anyhow::anyhow!("no LOCALAPPDATA"))?).join("rustyfiles").join("dialog");
+    let _ = std::fs::create_dir_all(&root);
+    let _lock = FileLock::take(&root.join(".lock"));
+    let dll = if mode == DialogReg::Enable || reg::any_ours(reg::CLASSES) { dialog_copy(&root) } else { None };
+    let mut changed = match (mode, &dll) {
+        (DialogReg::Enable, Some(dll)) => {
+            reg::enable(dll, reg::CLASSES)?;
+            true
+        }
+        (DialogReg::Enable, None) => anyhow::bail!("{} could not be copied from next to rustyfiles.exe", reg::DLL_NAME),
+        (DialogReg::Follow, Some(dll)) => reg::point_to(dll, reg::CLASSES),
+        (DialogReg::Follow, None) => false,
+    };
+    if reg::drop_dangling(reg::CLASSES) {
+        log::warn!("file dialogs: the registered DLL is gone; Windows' own dialog is back");
+        changed = true;
+    }
+    let mut keep: Vec<PathBuf> = reg::registered_paths(reg::CLASSES).iter().filter_map(|p| std::path::Path::new(p).parent().map(PathBuf::from)).collect();
+    keep.extend(dll.as_deref().and_then(|d| std::path::Path::new(d).parent().map(PathBuf::from)));
+    delete_old_copies(&root, &keep);
+    Ok(changed)
+}
+
+/// Deletes the copies under `root` except those in `keep` (one registered now: another build may have just registered it). A copy
+/// whose DLL an app has loaded stays whole, so the loaded DLL still finds rustyfiles-exe.txt.
+fn delete_old_copies(root: &std::path::Path, keep: &[PathBuf]) {
+    let same = |a: &std::path::Path, b: &std::path::Path| a.to_string_lossy().eq_ignore_ascii_case(&b.to_string_lossy());
+    let Ok(rd) = std::fs::read_dir(root) else { return };
+    for e in rd.flatten() {
+        let p = e.path();
+        if !p.is_dir() || keep.iter().any(|k| same(k, &p)) {
+            continue;
+        }
+        let lib = p.join(rf_win::dialog_reg::DLL_NAME);
+        if std::fs::remove_file(&lib).is_ok() || !lib.exists() {
+            let _ = std::fs::remove_dir_all(&p);
+        }
+    }
+}
+
+#[cfg(test)]
+mod dialog_copy_tests {
+    use std::os::windows::fs::OpenOptionsExt as _;
+
+    #[test]
+    fn the_registered_copy_and_loaded_copies_survive_the_clean_up() {
+        let root = std::env::temp_dir().join(format!("rf-dlgcopies-{}", std::process::id()));
+        let make = |name: &str| {
+            let d = root.join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join(rf_win::dialog_reg::DLL_NAME), b"x").unwrap();
+            std::fs::write(d.join("rustyfiles-exe.txt"), b"x").unwrap();
+            d
+        };
+        let (registered, old, loaded) = (make("0.8.6-a"), make("0.8.5-b"), make("0.8.4-c"));
+        std::fs::write(root.join(".lock"), b"").unwrap();
+        // (an app holding the DLL: no delete sharing)
+        let held = std::fs::OpenOptions::new().read(true).share_mode(1).open(loaded.join(rf_win::dialog_reg::DLL_NAME)).unwrap();
+        let upper = std::path::PathBuf::from(registered.to_string_lossy().to_uppercase());
+        super::delete_old_copies(&root, &[upper]);
+        assert!(registered.join(rf_win::dialog_reg::DLL_NAME).exists(), "the registered copy was deleted");
+        assert!(!old.exists());
+        assert!(loaded.join(rf_win::dialog_reg::DLL_NAME).exists() && loaded.join("rustyfiles-exe.txt").exists());
+        assert!(root.join(".lock").exists());
+        drop(held);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// This build's copy of the dialog DLL under `root` (made when missing), with `rustyfiles-exe.txt` beside it.
+fn dialog_copy(root: &std::path::Path) -> Option<String> {
     let exe = std::env::current_exe().ok()?;
     let src = exe.with_file_name(rf_win::dialog_reg::DLL_NAME);
     let meta = std::fs::metadata(&src).ok()?;
     let stamp = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
-    let root = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("rustyfiles").join("dialog");
     let dir = root.join(format!("{}-{:x}-{:x}", env!("CARGO_PKG_VERSION"), meta.len(), stamp));
     let dst = dir.join(rf_win::dialog_reg::DLL_NAME);
     if !dst.exists() {
@@ -145,14 +271,24 @@ pub(crate) fn dialog_dll() -> Option<String> {
         std::fs::rename(&part, &dst).ok()?;
     }
     let _ = std::fs::write(dir.join("rustyfiles-exe.txt"), exe.display().to_string());
-    if let Ok(rd) = std::fs::read_dir(&root) {
-        for e in rd.flatten() {
-            if e.path() != dir {
-                let _ = std::fs::remove_dir_all(e.path()); // fails while an app has it loaded
-            }
-        }
-    }
     Some(dst.display().to_string())
+}
+
+/// A lock across processes: a file held open with no sharing. Waits up to three seconds for it, then goes on without it (better
+/// than never registering).
+struct FileLock(#[allow(dead_code)] Option<std::fs::File>);
+
+impl FileLock {
+    fn take(path: &std::path::Path) -> FileLock {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        for _ in 0..60 {
+            if let Ok(f) = std::fs::OpenOptions::new().create(true).truncate(false).write(true).share_mode(0).open(path) {
+                return FileLock(Some(f));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        FileLock(None)
+    }
 }
 
 /// Packaged apps' file pickers run in PickerHost.exe, which can only load the registered DLL if
@@ -211,8 +347,16 @@ pub fn open_main_window_made(
     bounds: Option<WindowBounds>,
     cx: &mut App,
 ) -> bool {
+    let (bounds, display_id) = match bounds {
+        Some(bounds) => (bounds, None),
+        None => {
+            let restored = if workspace::any_main_window(cx) { None } else { restored_bounds(cx) };
+            restored.unwrap_or_else(|| (WindowBounds::centered(size(px(1280.), px(800.)), cx), None))
+        }
+    };
     let options = WindowOptions {
-        window_bounds: Some(bounds.unwrap_or_else(|| WindowBounds::centered(size(px(1280.), px(800.)), cx))),
+        window_bounds: Some(bounds),
+        display_id,
         window_min_size: Some(size(px(720.), px(420.))),
         window_background: crate::theme::window_material(WindowBackgroundAppearance::MicaBackdrop),
         ..TitleBar::window_options()
@@ -431,6 +575,26 @@ pub fn main() {
     // jump list task "New window"
     let new_window = arg.as_deref() == Some(rf_win::jumplist::NEW_WINDOW_ARG);
     let arg = arg.filter(|_| !new_window);
+    // several folders on the command line (issue 125): a first one that is gone (moved, renamed) is passed over, not handed to Explorer
+    // with its error, and the first one that is there opens instead; `first_taken` is how many arguments that used up
+    let mut first_taken = 1;
+    let arg = match arg {
+        Some(a) if std::env::args().nth(2).is_some() && !a.starts_with("::") && !a.to_ascii_lowercase().starts_with("shell:") && !a.starts_with("/") && !a.starts_with('-') && !std::path::Path::new(&a).exists() => {
+            let later = std::env::args()
+                .enumerate()
+                .skip(2)
+                .map(|(i, x)| (i, x.trim().trim_matches('"').to_string()))
+                .find(|(_, x)| !x.is_empty() && !x.starts_with("--") && is_dir_bounded(PathBuf::from(x), std::time::Duration::from_secs(2)) == Some(true));
+            match later {
+                Some((i, x)) => {
+                    first_taken = i;
+                    Some(x)
+                }
+                None => Some(a),
+            }
+        }
+        other => other,
+    };
     let mut start: Option<Location> = None;
     // Explorer's `/select,<file>`: its folder, with the file selected
     // (callers also write `/select, <file>`: the path then comes as the next argument)
@@ -525,14 +689,13 @@ pub fn main() {
                 }
             }
         }
-        // Open/Save dialogs: a registration whose DLL moved is pointed here (not from tests)
+        // Open/Save dialogs: a registration of another build is pointed at this one's copy, one whose DLL is gone is removed
+        // (not from tests)
         if registers {
-            if rf_win::dialog_reg::is_enabled(rf_win::dialog_reg::CLASSES) {
-                if let Some(dll) = dialog_dll() {
-                    if rf_win::dialog_reg::point_to(&dll, rf_win::dialog_reg::CLASSES) {
-                        log::warn!("file dialogs now use {dll}");
-                    }
-                }
+            match dialog_registration(DialogReg::Follow) {
+                Ok(true) => log::warn!("file dialogs: registration updated"),
+                Ok(false) => {}
+                Err(e) => log::warn!("file dialogs: {e:#}"),
             }
         }
         FILE_DIALOGS.store(rf_win::dialog_reg::is_enabled(rf_win::dialog_reg::CLASSES), std::sync::atomic::Ordering::Relaxed);
@@ -542,6 +705,18 @@ pub fn main() {
         )
     });
 
+    // more folders on the command line (`rustyfiles.exe "C:\My Pictures" "D:\My Videos"`): each one a tab of the same window, after the
+    // first (issue 125). Only plain folders that are there (one that is gone is passed over without a word), after a first argument that
+    // was one too.
+    let more_folders: Vec<String> = if matches!(start, Some(Location::Path(_))) && select.is_none() {
+        std::env::args()
+            .skip(first_taken + 1)
+            .map(|a| a.trim().trim_matches('"').to_string())
+            .filter(|a| !a.is_empty() && !a.starts_with("--") && is_dir_bounded(PathBuf::from(a), std::time::Duration::from_secs(2)) == Some(true))
+            .collect()
+    } else {
+        Vec::new()
+    };
     // "Show in folder" from other apps (SHOpenFolderAndSelectItems: Telegram, browsers) while we
     // are the default file manager: Windows opens the folder through our verb and names the
     // file afterwards, to a window it finds in its window list (see rf_win::shell_window). The
@@ -610,6 +785,9 @@ pub fn main() {
                 if let Some(msg) = shell_select.and_then(shell_selected) {
                     rf_win::handover::send_followup(&msg);
                 }
+                for folder in &more_folders {
+                    rf_win::handover::send_followup(folder);
+                }
                 return;
             }
             rf_win::single_instance::Role::Primary(guard) => Some(guard),
@@ -619,6 +797,10 @@ pub fn main() {
     let (ipc_tx, ipc_rx) = futures::channel::mpsc::unbounded::<String>();
     // second launches: each comes with the acknowledgement it waits for (the other senders of ipc_tx need none)
     let (launch_tx, launch_rx) = futures::channel::mpsc::unbounded::<(String, rf_win::handover::Ack)>();
+    // (this process is the first: its own extra folders open as tabs once the window is there, like second launches do)
+    for folder in more_folders {
+        let _ = ipc_tx.unbounded_send(folder);
+    }
     if let Some(rx) = shell_select {
         let tx = ipc_tx.clone();
         std::thread::spawn(move || {
@@ -635,6 +817,8 @@ pub fn main() {
         });
     }
 
+    // a drag of files that live inside the source (a mail's attachment, a browser's image) is dropped as files (see rf_win::vfiles)
+    gpui_windows::dnd_hint::set_virtual_reader(rf_win::vfiles::drag_paths);
     // (the first window on the CPU renderer or on the card: what this machine was like the last time, see `fast_start`)
     fast_start::before_app(!dock && !bar_preview && pick.is_none() && !quick_search && !snip_only && !no_window && !open_look_settings);
     start_mark("before the app");
@@ -667,6 +851,7 @@ pub fn main() {
                 match page.as_str() {
                     "speed" => settings_view::Page::Speed,
                     "general" => settings_view::Page::General,
+                    "appearance" => settings_view::Page::Appearance,
                     "dock" => settings_view::Page::Dock,
                     "filetypes" => settings_view::Page::FileTypes,
                     _ => settings_view::Page::Look,
@@ -682,7 +867,6 @@ pub fn main() {
         if let Some(d) = settings::local_data_dir() {
             rf_win::foldersize::shared_cache().persist(d.join("foldersizes.bin"));
         }
-        let bounds = restored_bounds(cx);
         match pick.clone() {
             // started only to answer a dialog: no main window
             Some(pipe) => picker::begin(pipe, cx),
@@ -710,7 +894,7 @@ pub fn main() {
                 installer::count_start(cx);
                 donate::refresh();
                 start_mark("opening the window");
-                open_main_window(if open_look_settings { Some(Location::Settings) } else { start }, None, bounds, cx);
+                open_main_window(if open_look_settings { Some(Location::Settings) } else { start }, None, None, cx);
                 start_mark("window opened");
                 fast_start::remember(cx);
                 // a copy or move cut off last time: ask to carry it on
@@ -791,11 +975,16 @@ pub fn main() {
         // the folder organizer's watchers (only if a rule runs by itself); not in helper processes
         if primary_instance {
             organizer::init(cx);
+            // Ferry (off until the user turns it on): only the main process listens
+            ferry::init(cx);
         }
         // GPUI would quit by itself when the last window closes (QuitMode::Default on Windows):
         // that cut running copies in half and makes background mode impossible. We decide.
         cx.set_quit_mode(gpui_kit::QuitMode::Explicit);
-        cx.on_window_closed(move |cx, _| last_window::settle(cx, switcher_preview))
+        cx.on_window_closed(move |cx, id| {
+            workspace::save_closed_placement(id, cx);
+            last_window::settle(cx, switcher_preview);
+        })
         .detach();
         cx.activate(true);
     });

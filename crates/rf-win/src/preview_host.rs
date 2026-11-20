@@ -18,7 +18,7 @@ use windows::Win32::UI::Shell::{
     IPreviewHandlerVisuals, IShellItem, SHCreateItemFromParsingName, SHCreateStreamOnFileEx,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, HWND_TOP, RegisterClassW, SW_HIDE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetWindowPos,
+    CreateWindowExW, DefWindowProcW, RegisterClassW, SW_HIDE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetWindowPos,
     ShowWindow, WINDOW_EX_STYLE, WNDCLASSW, WS_CLIPCHILDREN, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows::core::{GUID, Interface, PCWSTR, w};
@@ -482,6 +482,8 @@ fn host_window(owner: isize) -> Option<HWND> {
             // bent into it (and a video would keep the glass redrawing at its frame rate)
             crate::glass::exclude_from_capture(hwnd.0 as isize, true);
             *h = Some(Host { hwnd, owner, path: None, handler: None, player: None });
+            SHOWN.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
+            SHOWN_OWNER.store(owner, std::sync::atomic::Ordering::SeqCst);
             Some(hwnd)
         }
     })
@@ -546,17 +548,24 @@ fn client_rect(rect: RECT) -> RECT {
     RECT { left: 0, top: 0, right: rect.right - rect.left, bottom: rect.bottom - rect.top }
 }
 
+/// Puts the host window over `rect` and shows it, WITHOUT touching the order of windows: an owned window always stands above its
+/// owner, and one raised to the top takes its owner up with it (see `crate::window::raise_above_owner`). This is called for every
+/// frame the preview pane draws; with `HWND_TOP` here, the app window came back over whatever the user had just brought forward, so
+/// a video or song could not be dragged to another app through the taskbar while it was in the preview pane (issue 75: "Without the
+/// preview pane on the right, everything works as expected"). A window already shown where it should be is left alone.
 fn position(hwnd: HWND, rect: RECT) {
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsWindowVisible, SWP_NOOWNERZORDER, SWP_NOZORDER};
     unsafe {
-        let _ = SetWindowPos(
-            hwnd,
-            Some(HWND_TOP),
-            rect.left,
-            rect.top,
-            (rect.right - rect.left).max(1),
-            (rect.bottom - rect.top).max(1),
-            SWP_NOACTIVATE | SWP_SHOWWINDOW,
-        );
+        let mut now = RECT::default();
+        let w = (rect.right - rect.left).max(1);
+        let h = (rect.bottom - rect.top).max(1);
+        if IsWindowVisible(hwnd).as_bool()
+            && GetWindowRect(hwnd, &mut now).is_ok()
+            && (now.left, now.top, now.right - now.left, now.bottom - now.top) == (rect.left, rect.top, w, h)
+        {
+            return;
+        }
+        let _ = SetWindowPos(hwnd, None, rect.left, rect.top, w, h, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
     }
 }
 
@@ -617,6 +626,55 @@ pub fn hide() {
         unsafe {
             let _ = ShowWindow(hwnd, SW_HIDE);
         }
+    }
+}
+
+/// The host window and its owner, readable from any thread (the host itself lives on the STA thread). 0: none.
+static SHOWN: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+static SHOWN_OWNER: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+/// The app window `owner` is about to close. Call on ITS thread, before it is destroyed.
+///
+/// WHY (issue 146: an app's Open dialog, a PDF previewed in it, "after opening the preview window stays. I have to quit the program
+/// to close it"). The host is owned by the app window but lives on the STA thread. Destroying an owner destroys its owned windows,
+/// and for one of another thread Windows asks that thread and WAITS: while the STA thread was busy in the PDF preview handler, the
+/// app window's thread hung inside its own DestroyWindow, the picker and the document stayed on the screen and the app stopped
+/// answering. So the host is let go first, without waiting for the STA thread: it gets no owner and is hidden asynchronously, and
+/// the STA thread unloads the handler and destroys it when it gets to it.
+pub fn detach_from(owner: isize) {
+    use windows::Win32::UI::WindowsAndMessaging::{GWLP_HWNDPARENT, SW_HIDE as HIDE, SetWindowLongPtrW, ShowWindowAsync};
+    let host = SHOWN.load(std::sync::atomic::Ordering::SeqCst);
+    if host == 0 || SHOWN_OWNER.load(std::sync::atomic::Ordering::SeqCst) != owner {
+        return;
+    }
+    unsafe {
+        let h = HWND(host as *mut _);
+        let _ = ShowWindowAsync(h, HIDE);
+        SetWindowLongPtrW(h, GWLP_HWNDPARENT, 0);
+    }
+    SHOWN_OWNER.store(0, std::sync::atomic::Ordering::SeqCst);
+    crate::sta::run(move |_| owner_closed(owner));
+}
+
+/// The app window `owner` is gone: if the host is its, the handler is unloaded and the host window destroyed. Call on the STA
+/// thread. (The host is owned by the app window but lives on this thread, and Windows does not destroy an owned window of another
+/// thread with its owner: a file picker's PDF preview stayed on the screen after the picker closed, issue 146.)
+pub fn owner_closed(owner: isize) {
+    let old = HOST.with(|h| {
+        let mut h = h.borrow_mut();
+        if h.as_ref().is_some_and(|x| x.owner == owner) { h.take() } else { None }
+    });
+    let Some(old) = old else { return };
+    unload(old.handler);
+    if let Some(p) = old.player {
+        unsafe {
+            let _ = p.mp.Shutdown();
+        }
+    }
+    crate::glass::exclude_from_capture(old.hwnd.0 as isize, false);
+    let _ = SHOWN.compare_exchange(old.hwnd.0 as isize, 0, std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst);
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::DestroyWindow(old.hwnd);
     }
 }
 

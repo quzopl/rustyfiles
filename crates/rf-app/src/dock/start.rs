@@ -193,6 +193,8 @@ pub struct StartView {
     app_hi: usize,
     power: PowerMenu,
     power_hi: usize,
+    /// The power menu's items on this PC (Hibernate where Windows offers it), read when the menu opens.
+    power_items: Vec<PowerAction>,
     /// The Start button's own menu (a right click on the logo: `sys_menu.rs`) is open, and the row the keyboard is on.
     sys_menu: bool,
     sys_hi: usize,
@@ -349,6 +351,7 @@ impl StartView {
             app_hi: 0,
             power: PowerMenu::Closed,
             power_hi: 0,
+            power_items: power::items(false),
             sys_menu: false,
             sys_hi: 0,
             power_since: None,
@@ -878,7 +881,7 @@ impl StartView {
             return;
         }
         self.sys_menu = false;
-        self.quiet();
+        // (the quiet time comes after the row's work, as in `app_menu_do`: "Terminal as administrator" checks `live()` itself)
         match act {
             Act::Uri(uri) => {
                 super::panel_parts::open_uri(uri);
@@ -909,6 +912,7 @@ impl StartView {
                 self.set_power(PowerMenu::Open, cx);
             }
         }
+        self.quiet();
         cx.notify();
     }
 
@@ -943,7 +947,9 @@ impl StartView {
             return;
         }
         let Some(m) = self.app_menu.take() else { return };
-        self.quiet();
+        // The quiet time starts AFTER the row's work: each of these checks `live()` itself, and with the quiet time set first that
+        // check said no, so the menu's rows did nothing at all (issue 76: "when I try to pin an application in the start menu,
+        // nothing happens").
         match item {
             AppMenuItem::Pin => self.toggle_pin(&m.app, cx),
             AppMenuItem::Admin => self.launch_app_as_admin(m.app, cx),
@@ -953,6 +959,7 @@ impl StartView {
                 }
             }
         }
+        self.quiet();
         cx.notify();
     }
 
@@ -1115,6 +1122,9 @@ impl StartView {
     fn set_power(&mut self, menu: PowerMenu, cx: &mut Context<Self>) {
         let before = self.power;
         self.power = menu;
+        if menu == PowerMenu::Open && before == PowerMenu::Closed {
+            self.power_items = power::items(power::hibernate_offered());
+        }
         if matches!(menu, PowerMenu::Confirming(_)) {
             if before != menu {
                 self.power_since = Some(Instant::now());
@@ -1222,13 +1232,15 @@ impl StartView {
                     cx.stop_propagation();
                 }
                 (PowerMenu::Open, "up" | "down") => {
-                    self.power_hi = startlist::step_results(self.power_hi, key == "up", PowerAction::ALL.len());
+                    self.power_hi = startlist::step_results(self.power_hi, key == "up", self.power_items.len());
                     cx.stop_propagation();
                     cx.notify();
                 }
                 (PowerMenu::Open, "enter") => {
                     cx.stop_propagation();
-                    self.choose_power(PowerAction::ALL[self.power_hi.min(PowerAction::ALL.len() - 1)], cx);
+                    if let Some(&action) = self.power_items.get(self.power_hi).or(self.power_items.last()) {
+                        self.choose_power(action, cx);
+                    }
                 }
                 // the question: the keyboard starts on "Hayır"; Enter answers what it is on
                 (PowerMenu::Confirming(_), "left" | "right" | "tab") => {
@@ -1922,7 +1934,7 @@ impl StartView {
                     .border_color(border)
                     .shadow_lg()
                     .occlude();
-                for (i, action) in PowerAction::ALL.into_iter().enumerate() {
+                for (i, action) in self.power_items.clone().into_iter().enumerate() {
                     col = col.child(item(("p", i), power_icon(action), power_label(action), i == self.power_hi).on_click(cx.listener(move |this, _, _, cx| this.choose_power(action, cx))));
                 }
                 out.push(col.into_any_element());
@@ -1952,6 +1964,7 @@ fn power_label(a: PowerAction) -> &'static str {
     match a {
         PowerAction::Lock => t!("Kilitle"),
         PowerAction::Sleep => t!("Uyku"),
+        PowerAction::Hibernate => t!("Hazırda beklet"),
         PowerAction::SignOut => t!("Oturumu kapat"),
         PowerAction::Restart => t!("Yeniden başlat"),
         PowerAction::Shutdown => t!("Bilgisayarı kapat"),
@@ -1962,6 +1975,7 @@ fn power_icon(a: PowerAction) -> L {
     match a {
         PowerAction::Lock => L::Lock,
         PowerAction::Sleep => L::Moon,
+        PowerAction::Hibernate => L::Snowflake,
         PowerAction::SignOut => L::LogOut,
         PowerAction::Restart => L::RotateCw,
         PowerAction::Shutdown => L::Power,

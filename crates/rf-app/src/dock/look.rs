@@ -135,11 +135,23 @@ pub fn dock_size(cx: &App) -> f32 {
     cx.try_global::<Env>().map_or(1.0, |e| e.size)
 }
 
+static PLAIN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Settings > Dock > "Solid background" (issue 113): the islands paint an opaque fill and have no glass.
+pub fn plain() -> bool {
+    PLAIN.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn set_plain(on: bool) {
+    PLAIN.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// The island's own fill, painted only while the glass is not running (starting, failed): dark 0x1C1C1E at 72 %, light 0xF5F5F7 at
 /// 78 %, so the dock is never invisible.
 pub fn fallback_fill(dark: bool) -> Tint {
-    // (on a Windows without materials this fill is the island's look for good, and it is opaque there: `dock/backdrop.rs`)
-    let plain = !crate::settings::materials_available();
+    // (on a Windows without materials this fill is the island's look for good, and it is opaque there: `dock/backdrop.rs`; so it is
+    // with the "solid background" switch)
+    let plain = !crate::settings::materials_available() || plain();
     if dark { Tint::new(0x1C1C1E, if plain { 1.0 } else { 0.72 }) } else { Tint::new(0xF5F5F7, if plain { 1.0 } else { 0.78 }) }
 }
 
@@ -192,6 +204,11 @@ pub fn running_dot(dark: bool, in_front: bool) -> Tint {
 /// The mark under an icon whose start failed: a soft red, the same on either look of the glass.
 pub fn failed_dot() -> Tint {
     Tint::new(0xE5484D, 0.95)
+}
+
+/// The dot on an app whose window asks for attention: the red of a notification badge, in either theme.
+pub fn attention_dot() -> Tint {
+    Tint::new(0xE5484D, 1.0)
 }
 
 /// The running mark's size (logical px): a dot, and a wider one for the app in front.

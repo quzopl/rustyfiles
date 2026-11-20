@@ -99,8 +99,15 @@ impl FolderView {
         // The user's own programs for the first selected file's type (Settings > File types): the first rows of "Open with". Their
         // icons are read on the worker, with the shell's items: never on the UI thread.
         let own: Vec<String> = if background { Vec::new() } else { items.first().map(|f| rf_win::openrules::programs_for(f)).unwrap_or_default() };
+        // "Send to" (issue 117): its entries and their icons are read on the worker too, only when the menu has the row
+        let send_to = !background && send_to_fits(&items, cx);
+        let drives = if send_to { self.send_to_drives(cx) } else { Vec::new() };
+        let send_items = items.clone();
+        // the packaged apps' commands of Windows 11's new menu (issue 107), read on the worker with their icons
+        let pkg_items = if background { vec![dir.clone()] } else { items.clone() };
         let (tx, rx) = oneshot::channel();
         rf_win::sta::run(move |owner| {
+            let packaged = packaged_commands(rf_win::pkgverbs::for_items(&pkg_items, background));
             let own: Vec<OwnProgram> = own
                 .into_iter()
                 .map(|program| {
@@ -108,11 +115,22 @@ impl FolderView {
                     (program, icon)
                 })
                 .collect();
-            let _ = tx.send((rf_win::ctxmenu::build(owner, &target, false).map_err(|e| format!("{e:#}")), own));
+            let targets: Vec<SendTarget> = if send_to {
+                rf_win::sendto::targets()
+                    .into_iter()
+                    .map(|t| {
+                        let icon = rf_win::thumbs::get_image(&t.path, 32, rf_win::thumbs::Kind::Icon).ok();
+                        (t, icon)
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            let _ = tx.send((rf_win::ctxmenu::build(owner, &target, false).map_err(|e| format!("{e:#}")), own, targets, packaged));
         });
         let menu_weak = menu_view.downgrade();
         cx.spawn(async move |_, cx| {
-            let (result, own) = rx.await.unwrap_or_else(|_| (Err("cancelled".into()), Vec::new()));
+            let (result, own, targets, packaged) = rx.await.unwrap_or_else(|_| (Err("cancelled".into()), Vec::new(), Vec::new(), Vec::new()));
             let _ = cx.update(|cx| {
                 let (more, open_with, new) = match result {
                     Ok((session, shell)) => split_shell_items(&me, session, shell, background, cx),
@@ -122,12 +140,16 @@ impl FolderView {
                     }
                 };
                 let open_with = with_own_programs(&me, own, open_with);
+                let more = with_packaged(packaged, more);
                 let inline = !cx.global::<crate::settings::Settings>().menu.shell_submenu;
                 if let Some(m) = menu_weak.upgrade() {
                     m.update(cx, |m, cx| {
                         m.set_pending("more", more, cx);
                         m.set_pending("openwith", open_with, cx);
                         m.set_pending("new", new, cx);
+                        if send_to {
+                            m.set_pending("sendto", send_to_items(targets, drives, send_items), cx);
+                        }
                         // Settings: shell extensions listed in the menu itself, not in a submenu
                         if inline {
                             m.inline_pending("more", cx);
@@ -169,6 +191,10 @@ impl FolderView {
         let target_dir = if single_dir { items[0].clone() } else { dir.to_path_buf() };
         let prefs = cx.global::<crate::settings::Settings>();
         let (mp, show_flatten) = (prefs.menu.clone(), prefs.show_flatten);
+        // Members of an archive (ZIP, 7z, RAR... opened like a folder) have no file of their own: the rows that need one are left out
+        // (a shortcut, running as administrator, compressing, tags, the Shelf, the terminal...), and the few that make sense take an
+        // extracted copy first (the desktop background, installing a font). Copying out, dragging out, renaming and deleting inside work.
+        let in_archive = items.iter().any(|p| crate::archive_view::split(p).is_some() && !p.exists());
         let mut v: Vec<Item> = Vec::new();
 
         v.push(Item::action(t!("Aç"), icon(L::SquareArrowOutUpRight), act(me, |v, _, cx| v.open_selected(cx))).hint("Enter"));
@@ -194,6 +220,10 @@ impl FolderView {
         if has_files {
             v.push(Item::Sub { label: t!("Şununla aç").into(), icon: icon(L::LayoutGrid), items: Sub::Pending { key: "openwith", fallback: None } });
         }
+        // Explorer's "Send to" in the first menu (issue 117): its entries come with the shell's items (see `show_context_menu`)
+        if send_to_fits(items, cx) {
+            v.push(Item::Sub { label: t!("Gönder").into(), icon: icon(L::Send), items: Sub::Pending { key: "sendto", fallback: None } });
+        }
         if self.is_search() && items.len() == 1 {
             let p = items[0].clone();
             v.push(Item::action(t!("Dosya konumunu aç"), icon(L::FolderOpen), act(me, move |v, _, cx| {
@@ -207,11 +237,11 @@ impl FolderView {
         if mp.copy_path {
             v.push(Item::action(t!("Öğe yolunu kopyala"), icon(L::ClipboardCopy), act(me, |v, _, cx| v.copy_path(cx))).hint("Ctrl+Shift+C"));
         }
-        if mp.create_shortcut {
+        if mp.create_shortcut && !in_archive {
             let link_items = items.to_vec();
             v.push(Item::action(t!("Kısayol oluştur"), icon(L::Link), move |_, _| create_shortcuts(link_items.clone())));
         }
-        if !self.is_search() {
+        if !self.is_search() && !in_archive {
             let sel = items.to_vec();
             v.push(Item::action(t!("Seçimle klasör oluştur"), icon(L::FolderInput), act(me, move |v, _, cx| v.folder_with_selection(sel.clone(), cx))));
         }
@@ -255,7 +285,7 @@ impl FolderView {
                 .checked(out),
             );
         }
-        if single_dir && show_flatten {
+        if single_dir && show_flatten && !in_archive {
             let d = target_dir.clone();
             v.push(Item::action(t!("Klasörü düzleştir"), icon(L::FolderTree), act(me, move |v, w, cx| v.flatten_folder(d.clone(), w, cx))));
         }
@@ -270,12 +300,20 @@ impl FolderView {
                 v.push(Item::action(t!("Masaüstü arka planı yap"), icon(L::Monitor), move |_, _| {
                     let p = p.clone();
                     std::thread::spawn(move || {
-                        if let Err(e) = rf_win::fileactions::set_wallpaper(&p) {
+                        // A picture inside an archive has no file of its own: Windows was given the path inside the archive, could not
+                        // read it and left a plain colour (the owner, 2026-11-18: the background turned purple and pink). It is
+                        // extracted first, into the app's own folder (not the temp folder, which is cleaned after two days: the
+                        // background must still be there next week).
+                        let Some(real) = wallpaper_file(&p) else {
+                            log::warn!("wallpaper: the picture could not be extracted from its archive");
+                            return;
+                        };
+                        if let Err(e) = rf_win::fileactions::set_wallpaper(&real) {
                             log::warn!("wallpaper: {e:#}");
                         }
                     });
                 }));
-            } else if rf_win::fileactions::is_runnable(&p) {
+            } else if rf_win::fileactions::is_runnable(&p) && !in_archive {
                 v.push(Item::action(t!("Yönetici olarak çalıştır"), icon(L::ShieldCheck), move |_, _| {
                     let p = p.clone();
                     rf_win::sta::run(move |owner| {
@@ -293,7 +331,10 @@ impl FolderView {
                 let title = format!("{} {}", t!("Yazı tipi yükleniyor:"), crate::i18n::items(fonts.len()));
                 crate::status_center::start_with(cx, title, move |_| {
                     for f in &fonts {
-                        rf_win::fileactions::install_font_for_user(f)?;
+                        // (a font inside an archive is installed from a copy extracted first)
+                        let real = if f.exists() { Some(f.clone()) } else { crate::archive_view::real_copy(f) };
+                        let real = real.ok_or_else(|| anyhow::anyhow!("{}", t!("Arşivden çıkarılamadı")))?;
+                        rf_win::fileactions::install_font_for_user(&real)?;
                     }
                     Ok(true)
                 }, None);
@@ -306,7 +347,7 @@ impl FolderView {
         let zip_items = items.to_vec();
         let z7_items = items.to_vec();
         let dlg_items = items.to_vec();
-        if mp.compress {
+        if mp.compress && !in_archive {
             v.push(Item::sub(
                 t!("Sıkıştır"),
                 icon(L::Archive),
@@ -353,23 +394,26 @@ impl FolderView {
                 ],
             ));
         }
-        if mp.tags {
+        if mp.tags && !in_archive {
             v.push(Item::sub(t!("Etiketler"), icon(L::Tag), tag_items(me, items, cx)));
         }
-        if mp.shelf {
+        if mp.shelf && !in_archive {
             let shelf_items = items.to_vec();
             v.push(Item::action(t!("Rafa ekle"), icon(L::Inbox), act(me, move |_, _, cx| cx.emit(FolderEvent::AddToShelf(shelf_items.clone())))).hint("Ctrl+Shift+S"));
         }
-        if items.len() > 1 && !self.is_search() {
+        if !in_archive && crate::ferry::running(cx) {
+            v.push(Item::sub(t!("Ferry ile gönder"), icon(L::Send), crate::ferry::menu_items(items, cx)));
+        }
+        if items.len() > 1 && !self.is_search() && !in_archive {
             let b = items.to_vec();
             v.push(Item::action(t!("Toplu yeniden adlandır…"), icon(L::PencilLine), act(me, move |_, _, cx| cx.emit(FolderEvent::BulkRename(b.clone())))).hint("F2"));
         }
-        if self.dual {
+        if self.dual && !in_archive {
             let (c, m) = (items.to_vec(), items.to_vec());
             v.push(Item::action(t!("Diğer panele kopyala"), icon(L::CopyPlus), act(me, move |_, _, cx| cx.emit(FolderEvent::ToOtherPane(Transfer::Copy, c.clone())))));
             v.push(Item::action(t!("Diğer panele taşı"), icon(L::MoveRight), act(me, move |_, _, cx| cx.emit(FolderEvent::ToOtherPane(Transfer::Move, m.clone())))));
         }
-        if single_dir && mp.terminal {
+        if single_dir && mp.terminal && !in_archive {
             v.push(Item::Separator);
             let d = target_dir.clone();
             v.push(Item::action(t!("Terminalde aç"), icon(L::SquareTerminal), move |_, _| open_terminal(d.clone())).hint("Ctrl+Shift+`"));
@@ -377,7 +421,12 @@ impl FolderView {
         v.push(Item::Separator);
         v.push(Item::action(t!("Özellikler"), icon(L::Wrench), act(me, |v, _, cx| v.properties(cx))).hint("Alt+Enter"));
         v.push(Item::Sub { label: t!("Diğer seçenekleri göster").into(), icon: icon(L::Ellipsis), items: Sub::Pending { key: "more", fallback: None } });
-        Menu { quick: self.quick_clipboard(me, true), items: v }
+        let mut quick = self.quick_clipboard(me, true);
+        if in_archive {
+            // (Windows' share sheet needs real files)
+            quick.retain(|q| q.icon != L::Share2);
+        }
+        Menu { quick, items: v }
     }
 
     fn background_menu(&self, me: &Me, dir: &std::path::Path, cx: &mut Context<Self>) -> Menu {
@@ -402,18 +451,21 @@ impl FolderView {
         }
         let fallback = Rc::new(own_new_items(me));
         v.push(Item::Sub { label: t!("Yeni").into(), icon: icon(L::CirclePlus), items: Sub::Pending { key: "new", fallback: Some(fallback) } });
-        v.push(Item::action(t!("Kısayol yapıştır"), icon(L::ClipboardPaste), act(me, |v, w, cx| v.paste_shortcuts(w, cx))).enabled(rf_win::clipboard::has_files()));
-        if rf_win::clipboard::has_files() {
-            use rf_win::links::LinkKind;
-            v.push(Item::sub(
-                t!("Bağlantı olarak yapıştır"),
-                icon(L::Link),
-                vec![
-                    Item::action(t!("Sembolik bağlantı"), icon(L::Link), act(me, |v, w, cx| v.paste_links(LinkKind::Symbolic, w, cx))),
-                    Item::action(t!("Sabit bağlantı (dosyalar)"), icon(L::Link), act(me, |v, w, cx| v.paste_links(LinkKind::Hard, w, cx))),
-                    Item::action(t!("Bağlantı noktası (klasörler)"), icon(L::Link), act(me, |v, w, cx| v.paste_links(LinkKind::Junction, w, cx))),
-                ],
-            ));
+        let in_archive = crate::archive_view::split(dir).is_some() && !dir.exists();
+        if !in_archive {
+            v.push(Item::action(t!("Kısayol yapıştır"), icon(L::ClipboardPaste), act(me, |v, w, cx| v.paste_shortcuts(w, cx))).enabled(rf_win::clipboard::has_files()));
+            if rf_win::clipboard::has_files() {
+                use rf_win::links::LinkKind;
+                v.push(Item::sub(
+                    t!("Bağlantı olarak yapıştır"),
+                    icon(L::Link),
+                    vec![
+                        Item::action(t!("Sembolik bağlantı"), icon(L::Link), act(me, |v, w, cx| v.paste_links(LinkKind::Symbolic, w, cx))),
+                        Item::action(t!("Sabit bağlantı (dosyalar)"), icon(L::Link), act(me, |v, w, cx| v.paste_links(LinkKind::Hard, w, cx))),
+                        Item::action(t!("Bağlantı noktası (klasörler)"), icon(L::Link), act(me, |v, w, cx| v.paste_links(LinkKind::Junction, w, cx))),
+                    ],
+                ));
+            }
         }
         let d = dir.to_path_buf();
         v.push(Item::action(t!("Kenar çubuğuna sabitle"), icon(L::Pin), act(me, move |v, _, cx| v.pin(d.clone(), cx))));
@@ -434,8 +486,10 @@ impl FolderView {
         let show_hidden = self.filter.show_hidden;
         v.push(Item::action(t!("Gizli öğeleri göster"), icon(L::Eye), act(me, |v, _, cx| v.toggle_hidden(cx))).checked(show_hidden).hint("Ctrl+H"));
         v.push(Item::Separator);
-        let d = dir.to_path_buf();
-        v.push(Item::action(t!("Terminalde aç"), icon(L::SquareTerminal), move |_, _| open_terminal(d.clone())).hint("Ctrl+Shift+`"));
+        if !in_archive {
+            let d = dir.to_path_buf();
+            v.push(Item::action(t!("Terminalde aç"), icon(L::SquareTerminal), move |_, _| open_terminal(d.clone())).hint("Ctrl+Shift+`"));
+        }
         // the folder organizer: only where the folder has rules
         if !self.is_search() && crate::organizer::has_rules_for(dir, cx) {
             let d = dir.to_path_buf();
@@ -901,6 +955,111 @@ fn create_shortcuts(items: Vec<PathBuf>) {
 /// One of the user's own programs for a kind of file, and its icon when the shell gave one.
 type OwnProgram = (String, Option<rf_win::thumbs::Bgra>);
 
+/// A packaged app's command for the menu, with its icon read on the worker.
+struct Packaged {
+    id: usize,
+    title: String,
+    icon: Option<rf_win::thumbs::Bgra>,
+    enabled: bool,
+    sub: Vec<Packaged>,
+}
+
+/// The packaged commands with their icons (on the shell STA: the icons are files' own icons).
+fn packaged_commands(shown: Vec<rf_win::pkgverbs::Shown>) -> Vec<Packaged> {
+    shown
+        .into_iter()
+        .map(|s| Packaged {
+            id: s.id,
+            // (the menu marks no access keys: "&Open in Terminal" is "Open in Terminal")
+            title: s.title.replace("&&", "\u{1}").replace('&', "").replace('\u{1}', "&"),
+            icon: s.icon.and_then(|p| rf_win::thumbs::get_image(&p, 32, rf_win::thumbs::Kind::Icon).ok()),
+            enabled: s.enabled,
+            sub: packaged_commands(s.sub),
+        })
+        .collect()
+}
+
+fn packaged_items(cmds: Vec<Packaged>) -> Vec<Item> {
+    cmds.into_iter()
+        .map(|c| {
+            let picture = c.icon.as_ref().and_then(crate::image_cache::to_render_image).map(MenuIcon::Image).unwrap_or_else(|| icon(L::Package));
+            if c.sub.is_empty() {
+                let id = c.id;
+                Item::action(c.title, picture, move |_, _| {
+                    rf_win::sta::run(move |_| {
+                        if let Err(e) = rf_win::pkgverbs::invoke(id) {
+                            log::warn!("packaged menu command: {e:#}");
+                        }
+                    })
+                })
+                .enabled(c.enabled)
+            } else {
+                Item::sub(c.title, picture, packaged_items(c.sub))
+            }
+        })
+        .collect()
+}
+
+/// "Show more options" with the packaged apps' commands first, as Windows 11's own menu shows them (issue 107: "Edit with
+/// Notepad++", NanaZip, Terminal, ...), then the classic menu's items. They are there also when the classic part failed.
+fn with_packaged(packaged: Vec<Packaged>, rest: Pending) -> Pending {
+    if packaged.is_empty() {
+        return rest;
+    }
+    let mut items = packaged_items(packaged);
+    if let Pending::Ready(r) = &rest
+        && !r.is_empty()
+    {
+        items.push(Item::Separator);
+        items.extend(r.iter().cloned());
+    }
+    Pending::Ready(Rc::new(items))
+}
+
+/// An entry of the SendTo folder with its icon (read on the shell's worker thread).
+type SendTarget = (rf_win::sendto::Target, Option<rf_win::thumbs::Bgra>);
+
+/// The menu has "Send to" for these items: the setting is on and they are files of one folder on disk (not members of an archive, not
+/// on an FTP server: a drop needs the shell's own items of real files).
+fn send_to_fits(items: &[PathBuf], cx: &App) -> bool {
+    let Some(parent) = items.first().and_then(|p| p.parent()) else { return false };
+    cx.global::<crate::settings::Settings>().menu.send_to
+        && !rf_win::ftp::is_ftp(parent)
+        && items.iter().all(|p| p.parent() == Some(parent) && !(crate::archive_view::split(p).is_some() && !p.exists()))
+}
+
+/// The "Send to" submenu: the SendTo folder's entries, then the removable and network drives, as Explorer's menu has them. A click
+/// drops the items on the entry (a copy or a link, never a move), on the shell's worker thread.
+fn send_to_items(targets: Vec<SendTarget>, drives: Vec<(PathBuf, String, L)>, items: Vec<PathBuf>) -> Pending {
+    let send = |target: PathBuf, items: Vec<PathBuf>| {
+        move |_: &mut Window, _: &mut App| {
+            let (target, items) = (target.clone(), items.clone());
+            rf_win::sta::run(move |owner| {
+                if let Err(e) = rf_win::sendto::send(owner, &target, &items) {
+                    log::warn!("send to {}: {e:#}", target.display());
+                }
+            });
+        }
+    };
+    let mut out: Vec<Item> = targets
+        .into_iter()
+        .map(|(t, picture)| {
+            let picture = picture.as_ref().and_then(crate::image_cache::to_render_image).map(MenuIcon::Image).unwrap_or_else(|| icon(L::Send));
+            Item::action(t.name, picture, send(t.path, items.clone()))
+        })
+        .collect();
+    if !drives.is_empty() {
+        if !out.is_empty() {
+            out.push(Item::Separator);
+        }
+        out.extend(drives.into_iter().map(|(root, name, l)| Item::action(name, icon(l), send(root, items.clone()))));
+    }
+    if out.is_empty() {
+        out.push(Item::action(t!("Boş"), icon(L::Send), |_, _| {}).enabled(false));
+    }
+    Pending::Ready(Rc::new(out))
+}
+
 /// "Open with", with the user's own programs for the file's type first (in their order), then what Windows offers. Without a list
 /// for the type the submenu is Windows' alone. The programs are there also when the shell's part failed.
 fn with_own_programs(me: &Me, own: Vec<OwnProgram>, rest: Pending) -> Pending {
@@ -1127,4 +1286,18 @@ impl FolderView {
         })
         .detach();
     }
+}
+
+/// The file to make the desktop background of `p`: `p` itself, or for a picture inside an archive a copy of it in the app's
+/// `wallpapers` folder (one file per name, replaced when the same name is chosen again). Blocks (extraction): a worker thread.
+fn wallpaper_file(p: &std::path::Path) -> Option<std::path::PathBuf> {
+    if p.exists() || crate::archive_view::split(p).is_none() {
+        return Some(p.to_path_buf());
+    }
+    let extracted = crate::archive_view::real_copy(p)?;
+    let dir = crate::settings::app_dir()?.join("wallpapers");
+    std::fs::create_dir_all(&dir).ok()?;
+    let to = dir.join(p.file_name()?);
+    std::fs::copy(&extracted, &to).ok()?;
+    Some(to)
 }

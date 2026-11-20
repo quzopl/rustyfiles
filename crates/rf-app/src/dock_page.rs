@@ -190,6 +190,36 @@ pub(crate) fn entries() -> Vec<Entry> {
             Control::Switch(|s| s.dock_side_tall, |s, v| s.dock_side_tall = v),
         ),
         e(
+            "dock-autohide",
+            "dock_autohide",
+            General,
+            dock,
+            L::ArrowDownToLine,
+            t!("Dock'u otomatik gizle"),
+            Some(t!("Dock ekranın altında saklanır, imleç alt kenara gelince çıkar ve imleç ayrılınca yeniden saklanır. Açıkken pencereler için yer ayırmaz.")),
+            Control::Switch(|s| s.dock_autohide, |s, v| s.dock_autohide = v),
+        ),
+        e(
+            "dock-opaque",
+            "dock_opaque",
+            General,
+            dock,
+            L::Square,
+            t!("Düz arka plan"),
+            Some(t!("Adalar cam yerine düz, opak bir zeminle çizilir: hareketli bir duvar kâğıdında ya da pencerelerin önünde simgeler daha kolay seçilir.")),
+            Control::Switch(|s| s.dock_opaque, |s, v| s.dock_opaque = v),
+        ),
+        e(
+            "dock-show-desktop",
+            "dock_show_desktop",
+            General,
+            dock,
+            L::Monitor,
+            t!("Masaüstünü göster şeridi"),
+            Some(t!("Sağ adanın en sağında, zilden sonra ince bir şerit: tıklayınca bütün pencereler küçülür ve masaüstü görünür, bir daha tıklayınca geri gelir.")),
+            Control::Switch(|s| s.dock_show_desktop, |s, v| s.dock_show_desktop = v),
+        ),
+        e(
             "dock-tray-compact",
             "dock_tray_compact",
             General,
@@ -218,16 +248,6 @@ pub(crate) fn entries() -> Vec<Entry> {
             t!("Simge büyütme"),
             Some(t!("Fare dock'un üzerindeyken simgeler Mac'teki gibi büyür: Hafif 1,25 katına, Tam 1,55 katına kadar.")),
             Control::Magnify(|s| s.dock_magnify, |s, v| s.dock_magnify = v),
-        ),
-        e(
-            "dock-magnify-snap",
-            "dock_magnify_snap",
-            General,
-            dock,
-            L::Magnet,
-            t!("Simge simge büyüt"),
-            Some(t!("Büyüme farenin altındaki simgeye oturur ve bir simgeden ötekine kısa bir kaymayla geçer. Kapalıyken fareyi sürekli izler.")),
-            Control::Switch(|s| s.dock_magnify_snap, |s, v| s.dock_magnify_snap = v),
         ),
         e(
             "dock-scroll-volume",
@@ -280,6 +300,16 @@ pub(crate) fn entries() -> Vec<Entry> {
             t!("Arama"),
             Some(t!("Sol adadaki arama: bir kutu, yalnızca simgesi ya da hiç. Logo Başlat'ı yine açar.")),
             Control::Search(|s| s.dock_search, |s, v| s.dock_search = v),
+        ),
+        e(
+            "dock-search-hyper",
+            "dock_search_hypersearch",
+            Left,
+            dock,
+            L::Search,
+            t!("Arama HyperSearch'ü açar"),
+            Some(t!("Dock'taki arama kutusuna ya da simgesine tıklamak Başlat yerine HyperSearch'ü açar. Logo Başlat'ı yine açar.")),
+            Control::Switch(|s| s.dock_search_hypersearch, |s, v| s.dock_search_hypersearch = v),
         ),
         e("dock-city-edit", "dock_weather_city", Left, dock, L::MapPin, t!("Hava durumu şehri"), None, Control::City(|s| s.dock_weather_city.as_str(), |s, v| s.dock_weather_city = v)),
         // ---- ORTA ADA
@@ -677,8 +707,8 @@ mod tests {
         assert_eq!(secs, Section::ALL.to_vec(), "an empty section would be a heading with nothing under it");
         // the sections hold what the page promises
         let ids = |sec: Section| g.iter().find(|(s, _)| *s == sec).map(|(_, v)| v.iter().map(|e| e.field).collect::<Vec<_>>()).unwrap();
-        assert_eq!(ids(Section::General), ["dock_enabled", "dock_reserve", "dock_size", "dock_side_tall", "dock_tray_compact", "dock_all_monitors", "dock_magnify", "dock_magnify_snap", "dock_scroll_volume", "dock_start_grow"]);
-        assert_eq!(ids(Section::Left), ["dock_own_start", "dock_start_recommended", "dock_search", "dock_weather_city"]);
+        assert_eq!(ids(Section::General), ["dock_enabled", "dock_reserve", "dock_size", "dock_side_tall", "dock_autohide", "dock_opaque", "dock_show_desktop", "dock_tray_compact", "dock_all_monitors", "dock_magnify", "dock_scroll_volume", "dock_start_grow"]);
+        assert_eq!(ids(Section::Left), ["dock_own_start", "dock_start_recommended", "dock_search", "dock_search_hypersearch", "dock_weather_city"]);
         assert_eq!(ids(Section::Middle), ["dock_hover_previews", "dock_app_menu", "dock_thin_when_maximized", "dock_apps_where"]);
         assert_eq!(ids(Section::Right), ["dock_own_control_centre", "dock_own_calendar", "dock_own_notifications"]);
     }
