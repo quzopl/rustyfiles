@@ -65,7 +65,8 @@ jobs:
     # gelenmedya fork, with the new Setup.exe. It needs the WINGET_TOKEN secret (a classic token with the public_repo scope); without
     # it this job does nothing. The first version (0.9.0) was submitted by hand.
     needs: release
-    if: ${{ !contains(github.ref_name, '-') }}
+    # (the original project's winget package: not for forks)
+    if: ${{ !contains(github.ref_name, '-') && github.repository == 'gelenmedya/rustyfiles' }}
     runs-on: ubuntu-latest
     env:
       WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}

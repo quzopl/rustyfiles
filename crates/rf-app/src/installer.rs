@@ -10,7 +10,16 @@ use std::time::Duration;
 use velopack::sources::GithubSource;
 use velopack::{UpdateCheck, UpdateInfo, UpdateManager, VelopackApp};
 
-pub const REPO: &str = "https://github.com/gelenmedya/rustyfiles";
+/// Where updates come from: the GitHub releases of this fork (quzopl/rustyfiles), which carries features the original has not.
+/// A build can take another repository's releases: `RUSTYFILES_UPDATE_REPO=https://github.com/<owner>/<repo>` when building.
+pub const REPO: &str = match option_env!("RUSTYFILES_UPDATE_REPO") {
+    Some(r) => r,
+    None => "https://github.com/quzopl/rustyfiles",
+};
+/// The original project (its page and its issues; the stars belong to its author).
+pub const UPSTREAM: &str = "https://github.com/gelenmedya/rustyfiles";
+/// The release notes of the repository updates come from.
+pub static RELEASES_URL: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| format!("{REPO}/releases"));
 /// AppUserModelID of the installed app (Velopack names shortcuts "velopack.<pack id>").
 pub const APP_ID: &str = "velopack.rustyfiles";
 

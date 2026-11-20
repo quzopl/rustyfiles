@@ -2923,7 +2923,7 @@ fn update_card(p: &Palette, s: &Settings) -> AnyElement {
         State::Failed(e) => format!("{} {e}", t!("Denetlenemedi:")),
     };
     let control = match state {
-        State::NotInstalled => button("upd-web", p, t!("Sürümler sayfası"), |_, _| open_url(RELEASES_URL)),
+        State::NotInstalled => button("upd-web", p, t!("Sürümler sayfası"), |_, _| open_url(crate::installer::RELEASES_URL.as_str())),
         State::Ready(_) => button("upd-restart", p, t!("Yeniden başlat ve güncelle"), |_, _| {
             std::thread::spawn(crate::installer::restart_to_update);
         }),
@@ -3006,11 +3006,10 @@ pub(crate) fn check_updates_now(cx: &mut App) {
     .detach();
 }
 
-const REPO_URL: &str = "https://github.com/gelenmedya/rustyfiles";
+const REPO_URL: &str = crate::installer::UPSTREAM;
 const SITE_URL: &str = "https://rustyfiles.com";
 const DISCORD_URL: &str = "https://discord.gg/K2banZ36zJ";
 const ISSUES_URL: &str = "https://github.com/gelenmedya/rustyfiles/issues/new";
-const RELEASES_URL: &str = "https://github.com/gelenmedya/rustyfiles/releases";
 
 fn about(p: &Palette, cx: &mut App) -> Vec<AnyElement> {
     let ver = crate::installer::version_full();
@@ -3048,7 +3047,7 @@ fn about(p: &Palette, cx: &mut App) -> Vec<AnyElement> {
         link_row(p, "gh-star", L::Star, t!("GitHub'da yıldız ver"), Some(t!("rustyfiles işinize yarıyorsa başkalarının da bulmasına yardım eder.")), |_, _| open_url(REPO_URL)),
         link_row(p, "coffee", L::Coffee, t!("Geliştiriciye bir kahve ısmarla"), Some(t!("rustyfiles'ı tek başıma geliştiriyorum; her destek, devam etmeme yardım eder.")), |_, _| open_url(crate::installer::DONATE)),
         link_row(p, "gh-issue", L::MessageSquare, t!("Hata bildir ya da öneride bulun"), None, |_, _| open_url(ISSUES_URL)),
-        link_row(p, "gh-notes", L::ScrollText, t!("Sürüm notları"), None, |_, _| open_url(RELEASES_URL)),
+        link_row(p, "gh-notes", L::ScrollText, t!("Sürüm notları"), None, |_, _| open_url(crate::installer::RELEASES_URL.as_str())),
         section(p, t!("Topluluk")),
         link_row(p, "site", L::Globe, t!("Web sitesi"), Some("rustyfiles.com"), |_, _| open_url(SITE_URL)),
         link_row(p, "discord", L::Users, t!("Discord sunucusu"), Some(t!("Soru sor, fikir paylaş, yeni sürümlerden haberdar ol.")), |_, _| open_url(DISCORD_URL)),

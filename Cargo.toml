@@ -5,7 +5,8 @@ members = ["crates/rf-core", "crates/rf-win", "crates/rf-app", "crates/rf-nearby
 exclude = ["crates/rf-mac", "macos", "vendor/velopack"]
 
 [workspace.package]
-version = "0.9.3"
+# fork versions: the original's 0.9.3 → 0.9.301, 0.9.302, … (above it, so updates from this fork's releases take)
+version = "0.9.301"
 edition = "2024"
 license = "MIT"
 publish = false
